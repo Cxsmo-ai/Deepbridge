@@ -5,10 +5,20 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/Cxsmo-ai/Deepbridge/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/Cxsmo-ai/Deepbridge/ci.yml?branch=main&style=for-the-badge&label=CI"></a>
+  <a href="https://github.com/Cxsmo-ai/Deepbridge/actions/workflows/publish-docker.yml"><img alt="GHCR publish" src="https://img.shields.io/github/actions/workflow/status/Cxsmo-ai/Deepbridge/publish-docker.yml?branch=main&style=for-the-badge&label=GHCR"></a>
+  <a href="https://github.com/Cxsmo-ai/Deepbridge/pkgs/container/deepbridge"><img alt="GHCR image" src="https://img.shields.io/badge/GHCR-ghcr.io%2Fcxsmo--ai%2Fdeepbridge-2ea44f?style=for-the-badge&logo=github"></a>
+  <a href="https://github.com/Cxsmo-ai/Deepbridge/releases"><img alt="Release downloads" src="https://img.shields.io/github/downloads/Cxsmo-ai/Deepbridge/total?style=for-the-badge&label=Release%20downloads"></a>
+  <a href="https://github.com/Cxsmo-ai/Deepbridge/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/Cxsmo-ai/Deepbridge?style=for-the-badge"></a>
+  <a href="https://github.com/Cxsmo-ai/Deepbridge/network/members"><img alt="Forks" src="https://img.shields.io/github/forks/Cxsmo-ai/Deepbridge?style=for-the-badge"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/Cxsmo-ai/Deepbridge?style=for-the-badge"></a>
+</p>
+<p align="center">
   <a href="#quick-start">Quick start</a> ·
   <a href="docs/DOCKER.md">Docker</a> ·
   <a href="docs/CONFIGURATION.md">Configuration</a> ·
   <a href="docs/TROUBLESHOOTING.md">Troubleshooting</a> ·
+  <a href="docs/METRICS.md">Live metrics</a> ·
   <a href="SECURITY.md">Security</a>
 </p>
 
@@ -85,6 +95,17 @@ https://your-domain.example/<configuration-token>/manifest.json
 ```
 
 
+
+## Live metrics and downloads
+
+The README includes live badges for CI, GHCR publishing, release downloads, stars, forks, and license status.
+
+- Release download counts are tracked live by GitHub/Shields once release assets are published.
+- GHCR publish status and package links are shown live.
+- GitHub Container Registry does **not** expose public live pull/download totals for container images, so a true public GHCR pull-count badge is not currently available from GitHub.
+
+See [docs/METRICS.md](docs/METRICS.md) for what can and cannot be tracked live.
+
 ## Prebuilt container image
 
 Deepbridge publishes Docker images to GitHub Container Registry:
@@ -102,6 +123,7 @@ docker run --rm \
   --env-file .env \
   ghcr.io/cxsmo-ai/deepbridge:latest
 ```
+
 ## Docker quick start
 
 ```bash
@@ -234,7 +256,3 @@ docs/         Documentation
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE).
-
-
-
-
