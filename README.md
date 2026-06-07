@@ -26,6 +26,22 @@
 
 ---
 
+## Pull from Docker Hub
+
+```bash
+docker pull pickymarker/deepbridge:latest
+```
+
+Run it:
+
+```bash
+docker run --rm \
+  --name deepbridge \
+  -p 7000:7000 \
+  --env-file .env \
+  pickymarker/deepbridge:latest
+```
+
 ## What is Deepbridge?
 
 Deepbridge is a self-hosted Stremio addon that bridges Stremio, Deepbrid, and optional Newznab-compatible Usenet indexers. It combines Deepbrid official streams with external indexer NZBs resolved through Deepbrid, then presents clean, ranked Stremio stream cards.
