@@ -9,6 +9,9 @@ The README includes live badges for:
 - CI workflow status.
 - GHCR publishing workflow status.
 - Link to the GHCR image package.
+- Docker Hub pull count for the `pickymarker/deepbridge` mirror.
+- Docker Hub image size for the `latest` mirror tag.
+- Docker Hub stars for the `pickymarker/deepbridge` mirror.
 - GitHub release asset downloads.
 - GitHub stars.
 - GitHub forks.
@@ -36,6 +39,24 @@ ghcr.io/cxsmo-ai/deepbridge:latest
 
 The README links to the package page and shows the GHCR publish workflow status.
 
+## Docker Hub mirror tracking
+
+Deepbridge is mirrored to Docker Hub at:
+
+```text
+pickymarker/deepbridge
+```
+
+Docker Hub exposes public pull/star/image-size metadata, so the README can show live Docker Hub badges:
+
+```text
+https://img.shields.io/docker/pulls/pickymarker/deepbridge
+https://img.shields.io/docker/stars/pickymarker/deepbridge
+https://img.shields.io/docker/image-size/pickymarker/deepbridge/latest
+```
+
+These badges are the public live Docker pull statistics for the Docker Hub mirror.
+
 ## GHCR pull/download count limitation
 
 GitHub Container Registry currently does **not** provide a public live pull/download count badge for container images like Docker Hub does.
@@ -58,7 +79,7 @@ If you want a public pull counter, use one of these approaches:
 
 1. **Mirror to Docker Hub**
    - Docker Hub exposes public pull counts.
-   - The README can show a Docker Hub pulls badge.
+   - Deepbridge uses this approach with `pickymarker/deepbridge`.
 
 2. **Publish GitHub Releases**
    - Attach release artifacts and track release asset downloads.

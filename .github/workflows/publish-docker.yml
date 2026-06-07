@@ -14,8 +14,10 @@ permissions:
 
 jobs:
   publish:
-    name: Publish to GHCR
+    name: Publish to GHCR and Docker Hub
     runs-on: ubuntu-latest
+    env:
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,8 +32,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract Docker metadata
-        id: meta
+      - name: Log in to Docker Hub
+        if: ${{ env.DOCKERHUB_TOKEN != '' }}
+        uses: docker/login-action@v3
+        with:
+          username: pickymarker
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract GHCR Docker metadata
+        id: ghcr-meta
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository_owner }}/deepbridge
@@ -42,12 +51,36 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
-      - name: Build and publish Docker image
+      - name: Build and publish GHCR Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.ghcr-meta.outputs.tags }}
+          labels: ${{ steps.ghcr-meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Extract Docker Hub metadata
+        if: ${{ env.DOCKERHUB_TOKEN != '' }}
+        id: dockerhub-meta
+        uses: docker/metadata-action@v5
+        with:
+          images: docker.io/pickymarker/deepbridge
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+            type=sha,prefix=sha-
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Build and publish Docker Hub image
+        if: ${{ env.DOCKERHUB_TOKEN != '' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.dockerhub-meta.outputs.tags }}
+          labels: ${{ steps.dockerhub-meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
