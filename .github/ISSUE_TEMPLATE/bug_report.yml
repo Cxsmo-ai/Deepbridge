@@ -1,0 +1,55 @@
+﻿name: Bug report
+description: Report a reproducible Deepbridge issue
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Do not paste API keys, config tokens, private IPs, or full playback URLs.
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the issue and what you expected.
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment type
+      options:
+        - Local Node.js
+        - Docker
+        - Docker Compose
+        - Reverse proxy
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: source
+    attributes:
+      label: Source type
+      options:
+        - Deepbrid Official
+        - External / Prechecked
+        - Both
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Install addon...
+        2. Open title...
+        3. Click stream...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized logs
+      description: Redact API keys, config tokens, URLs, IPs, and secrets.
+      render: shell

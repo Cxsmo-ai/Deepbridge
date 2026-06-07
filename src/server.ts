@@ -1,0 +1,408 @@
+import Fastify from "fastify";
+import fastifyStatic from "@fastify/static";
+import fastifyFormbody from "@fastify/formbody";
+import fastifyCors from "@fastify/cors";
+import path from "path";
+import dotenv from "dotenv";
+
+import { manifest } from "./stremio/manifest";
+import { DeepbridClient, MediaRequest } from "./deepbrid/apiClient";
+import { getOfficialDeepbridSources } from "./deepbrid/officialAddon";
+import { formatStreams } from "./stremio/formatStreams";
+import { getIndexerSources } from "./indexer/search";
+import { decodeConfig } from "./core/configDecoder";
+import { dedupeCandidates } from "./core/releaseMatch";
+import { parseRelease } from "./core/parseRelease";
+import { SourceCandidate } from "./core/types";
+
+dotenv.config();
+
+function redactUrl(url: string): string {
+  return url
+    .replace(/^\/[^/]{40,}(?=\/)/, "/:token")
+    .replace(/\/resolve\/[^/?]+/, "/resolve/:payload")
+    .replace(/\/play\/[^/?]+/, "/play/:payload");
+}
+
+const app = Fastify({
+  logger: {
+    serializers: {
+      req(request) {
+        return {
+          method: request.method,
+          url: redactUrl(request.url),
+          host: request.hostname,
+          remoteAddress: request.ip,
+          remotePort: request.socket?.remotePort
+        };
+      }
+    }
+  },
+  trustProxy: true,
+  maxParamLength: 10000
+});
+
+app.register(fastifyCors, { origin: "*" });
+app.register(fastifyFormbody);
+
+// Serve static files from public
+app.register(fastifyStatic, {
+  root: path.join(__dirname, "../public"),
+  prefix: "/static/", 
+});
+
+const baseUrl = process.env.BASE_URL || "http://localhost:7000";
+
+function getRequestBaseUrl(request: any): string {
+  return process.env.BASE_URL || `${request.protocol}://${request.hostname}`;
+}
+
+type ResolvePayload = {
+  nzbUrl: string;
+  season?: number;
+  episode?: number;
+  absoluteEpisode?: number;
+  seasonPack?: boolean;
+  title?: string;
+};
+
+const resolveCache = new Map<string, { url: string; expiresAt: number }>();
+const resolveInflight = new Map<string, Promise<string>>();
+// Final Deepbrid/myfast playback URLs can be short-lived or single-use.
+// Keep only in-flight de-duping, not long-lived cached redirects.
+const resolveTtlMs = 0;
+
+function resolveCacheKey(payload: ResolvePayload): string {
+  return [
+    payload.nzbUrl,
+    payload.season || "",
+    payload.episode || "",
+    payload.absoluteEpisode || "",
+    payload.seasonPack ? "pack" : "single"
+  ].join("|");
+}
+
+function decodeResolvePayload(encoded: string): ResolvePayload {
+  let base64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
+  while (base64.length % 4) {
+    base64 += '=';
+  }
+  const decoded = Buffer.from(base64, 'base64').toString('utf8');
+  try {
+    const parsed = JSON.parse(decoded);
+    if (parsed && parsed.nzbUrl) return parsed;
+  } catch(e) {
+  }
+  return { nzbUrl: decoded };
+}
+
+function normalizePlayableUrl(url: string): string {
+  return new URL(url, "https://www.deepbrid.com").toString();
+}
+
+function fileSize(file: any): number {
+  const size = Number(file?.filesize || file?.size || 0);
+  return Number.isFinite(size) ? size : 0;
+}
+
+function isVideoFile(file: any): boolean {
+  const filename = String(file.filename || file.name || "");
+  return /\.(mkv|mp4|m4v|mov|avi|ts|m2ts|webm)$/i.test(filename);
+}
+
+function isArchiveUrl(url: string): boolean {
+  try {
+    const pathname = decodeURIComponent(new URL(url).pathname);
+    return /\.(?:rar|r\d{2}|7z(?:\.\d{3})?|zip|par2|sfv|nfo)(?:$|[/?#])/i.test(pathname);
+  } catch {
+    return false;
+  }
+}
+
+function selectPlayableFile(files: any[], payload: ResolvePayload): any {
+  const playableFiles = files.filter(isVideoFile);
+  if (playableFiles.length === 0) return undefined;
+  const requestedSeason = payload.season;
+  const requestedEpisode = payload.episode;
+
+  if (requestedEpisode) {
+    const exact = playableFiles.find((file: any) => {
+      const parsed = parseRelease(String(file.filename || file.name || ""));
+      return parsed.season === requestedSeason && parsed.episode === requestedEpisode;
+    });
+    if (exact) return exact;
+
+    const range = playableFiles.find((file: any) => {
+      const parsed = parseRelease(String(file.filename || file.name || ""));
+      return parsed.season === requestedSeason && parsed.episodeRange && parsed.episodeRange.start <= requestedEpisode && parsed.episodeRange.end >= requestedEpisode;
+    });
+    if (range) return range;
+
+    const absolute = playableFiles.find((file: any) => {
+      const parsed = parseRelease(String(file.filename || file.name || ""));
+      return parsed.absoluteEpisode === requestedEpisode;
+    });
+    if (absolute) return absolute;
+  }
+
+  return playableFiles.reduce((prev: any, current: any) => fileSize(prev) > fileSize(current) ? prev : current);
+}
+
+async function resolveNzbToPlayableUrl(client: DeepbridClient, payload: ResolvePayload, addTimeoutMs = 25000): Promise<string> {
+  const cacheKey = resolveCacheKey(payload);
+  const cached = resolveCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.url;
+
+  const existing = resolveInflight.get(cacheKey);
+  if (existing) return existing;
+
+  const promise = (async () => {
+    const addData = await client.addUsenetByUrl(payload.nzbUrl, addTimeoutMs) as any;
+    
+    if (addData.error || !addData.files || addData.files.length === 0) {
+      throw new Error("Failed to add or resolve Usenet link on Deepbrid.");
+    }
+
+    const playableFile = selectPlayableFile(addData.files, payload);
+    
+    if (!playableFile || !playableFile.download_url) {
+      throw new Error("No playable video file found in this NZB.");
+    }
+
+    const playableUrl = normalizePlayableUrl(String(playableFile.download_url));
+    if (resolveTtlMs > 0) {
+      resolveCache.set(cacheKey, { url: playableUrl, expiresAt: Date.now() + resolveTtlMs });
+    }
+    return playableUrl;
+  })();
+
+  resolveInflight.set(cacheKey, promise);
+  try {
+    return await promise;
+  } finally {
+    resolveInflight.delete(cacheKey);
+  }
+}
+
+function candidateToResolvePayload(candidate: SourceCandidate): ResolvePayload | null {
+  if (!candidate.nzbUrl) return null;
+  return {
+    nzbUrl: candidate.nzbUrl,
+    season: candidate.season,
+    episode: candidate.episode,
+    absoluteEpisode: candidate.absoluteEpisode,
+    seasonPack: candidate.seasonPack,
+    title: candidate.title
+  };
+}
+
+async function pregrabExternalCandidates(client: DeepbridClient, candidates: SourceCandidate[]): Promise<SourceCandidate[]> {
+  const startedAt = Date.now();
+  const deadlineMs = 12000;
+  const maxAttempts = 10;
+  const maxReady = 6;
+  const externalCandidates = candidates
+    .filter(candidate => candidate.origin !== "deepbrid-official")
+    .sort((a, b) => b.score - a.score)
+    .slice(0, maxAttempts);
+  const readyCandidates: SourceCandidate[] = [];
+  const concurrency = 2;
+  let index = 0;
+
+  async function worker() {
+    while (index < externalCandidates.length && readyCandidates.length < maxReady && Date.now() - startedAt < deadlineMs) {
+      const candidate = externalCandidates[index++];
+      const payload = candidateToResolvePayload(candidate);
+      if (!payload) continue;
+
+      try {
+        const playableUrl = await resolveNzbToPlayableUrl(client, payload, 7000);
+        if (isArchiveUrl(playableUrl)) continue;
+
+        readyCandidates.push({
+          ...candidate,
+          status: "ready",
+          playableUrl,
+          score: candidate.score + 5000
+        });
+      } catch {
+        // Invalid or unresolved indexer results are intentionally hidden.
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, externalCandidates.length) }, worker));
+  return readyCandidates;
+}
+
+// Public Stremio routes
+app.get("/manifest.json", async (request, reply) => {
+  return { 
+    ...manifest, 
+    logo: `https://www.deepbrid.com/file/get/path/banners.5ea0998723b53/i/236387`,
+    background: `https://www.deepbrid.com/file/get/path/banners.5ea0998723b53/i/236387`
+  };
+});
+
+app.get("/:token/manifest.json", async (request, reply) => {
+  // If the token is a valid config, we could dynamically modify the manifest name
+  const config = decodeConfig((request.params as any).token);
+  const baseManifest = { 
+    ...manifest, 
+    logo: `https://www.deepbrid.com/file/get/path/banners.5ea0998723b53/i/236387`,
+    background: `https://www.deepbrid.com/file/get/path/banners.5ea0998723b53/i/236387`
+  };
+  
+  if (config) {
+    return { 
+      ...baseManifest, 
+      name: "Deepbridge (Custom)",
+      behaviorHints: {
+        configurable: true,
+        configurationRequired: false
+      }
+    };
+  }
+  return baseManifest;
+});
+
+async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, token?: string) {
+  try {
+    let apiKey = "";
+    let userConfig: any = null;
+
+    if (token) {
+      userConfig = decodeConfig(token);
+    }
+
+    if (userConfig && userConfig.deepbridApiKey) {
+      apiKey = userConfig.deepbridApiKey;
+    } else {
+      apiKey = process.env.DEEPBRID_API_KEY || "";
+    }
+    
+    // If no config provided at all (and no fallback), we can't do anything
+    if (!apiKey) {
+      return { streams: [] };
+    }
+    const client = new DeepbridClient(apiKey);
+
+    const [officialResult, indexerResult] = await Promise.allSettled([
+      getOfficialDeepbridSources(client, media, userConfig),
+      getIndexerSources(client, media, userConfig)
+    ]);
+    const officialCandidates = officialResult.status === "fulfilled" ? officialResult.value : [];
+    const indexerCandidates = indexerResult.status === "fulfilled" ? indexerResult.value : [];
+    const readyIndexerCandidates = await pregrabExternalCandidates(client, indexerCandidates);
+    
+    const candidates = dedupeCandidates([...officialCandidates, ...readyIndexerCandidates]);
+    const streams = formatStreams(candidates, dynamicBaseUrl, token);
+    
+    // Fallback if empty
+    if (streams.length === 0) {
+      return { streams: [] };
+    }
+
+    return { streams };
+  } catch (error) {
+    app.log.error(error);
+    return { streams: [] };
+  }
+}
+
+function parseSeriesRouteId(id: string): { imdbId: string; season: number; episode: number } {
+  const parts = id.split(":");
+  const episode = parseInt(parts.pop() || "", 10);
+  const season = parseInt(parts.pop() || "", 10);
+  return {
+    imdbId: parts.join(":"),
+    season,
+    episode
+  };
+}
+
+app.get("/stream/movie/:imdbId.json", async (request, reply) => {
+  const { imdbId } = request.params as { imdbId: string };
+  app.log.info({ event: "stream_request", mediaType: "movie", imdbId });
+  const dynamicBaseUrl = getRequestBaseUrl(request);
+  return await handleStreamRequest({ type: "movie", imdbId }, dynamicBaseUrl);
+});
+
+app.get("/stream/series/:id.json", async (request, reply) => {
+  const { id } = request.params as { id: string };
+  app.log.info({ event: "stream_request", mediaType: "series", id });
+  
+  const dynamicBaseUrl = getRequestBaseUrl(request);
+  const { imdbId, season, episode } = parseSeriesRouteId(id);
+  return await handleStreamRequest({ 
+    type: "series", 
+    imdbId, 
+    season, 
+    episode 
+  }, dynamicBaseUrl);
+});
+
+app.get("/:token/stream/movie/:imdbId.json", async (request, reply) => {
+  const { token, imdbId } = request.params as { token: string, imdbId: string };
+  app.log.info({ event: "stream_request", mediaType: "movie", imdbId });
+  const dynamicBaseUrl = getRequestBaseUrl(request);
+  return await handleStreamRequest({ type: "movie", imdbId }, dynamicBaseUrl, token);
+});
+
+app.get("/:token/stream/series/:id.json", async (request, reply) => {
+  const { token, id } = request.params as { token: string, id: string };
+  app.log.info({ event: "stream_request", mediaType: "series", id });
+  
+  const dynamicBaseUrl = getRequestBaseUrl(request);
+  const { imdbId, season, episode } = parseSeriesRouteId(id);
+  return await handleStreamRequest({ 
+    type: "series", 
+    imdbId, 
+    season, 
+    episode 
+  }, dynamicBaseUrl, token);
+});
+
+app.get("/health", async () => {
+  return { status: "ok" };
+});
+
+app.get("/:token/resolve/:encodedNzbUrl", async (request, reply) => {
+  const { token, encodedNzbUrl } = request.params as { token: string, encodedNzbUrl: string };
+  
+  try {
+    const payload = decodeResolvePayload(encodedNzbUrl);
+
+    const userConfig = decodeConfig(token);
+    const apiKey = userConfig?.deepbridApiKey || process.env.DEEPBRID_API_KEY || "";
+    
+    if (!apiKey) {
+      return reply.status(400).send("No API key");
+    }
+
+    const client = new DeepbridClient(apiKey);
+    const playableUrl = await resolveNzbToPlayableUrl(client, payload);
+    return reply.redirect(playableUrl);
+  } catch (err) {
+    app.log.error(err);
+    return reply.status(500).send("Internal error while resolving stream.");
+  }
+});
+
+// Basic config page serving static html
+app.get("/", async (request, reply) => {
+  return reply.sendFile("index.html");
+});
+
+const start = async () => {
+  try {
+    const port = parseInt(process.env.PORT || "7000");
+    await app.listen({ port, host: "0.0.0.0" });
+    app.log.info(`Server listening on http://localhost:${port}`);
+  } catch (err) {
+    app.log.error(err);
+    process.exit(1);
+  }
+};
+
+start();

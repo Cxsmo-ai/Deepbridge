@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Deepbridge Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-gradient: linear-gradient(135deg, #09090e 0%, #171728 100%);
+      --panel-bg: rgba(255, 255, 255, 0.05);
+      --panel-border: rgba(255, 255, 255, 0.1);
+      --text: #f0f0f5;
+      --text-muted: #a0a0b5;
+      --primary: #6c5ce7;
+      --primary-hover: #a29bfe;
+      --accent: #00cec9;
+      --danger: #ff7675;
+      --glass-blur: blur(12px);
+    }
+    
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: var(--bg-gradient);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow-x: hidden;
+      padding: 20px;
+    }
+
+    /* Ambient background glows */
+    .ambient-glow {
+      position: fixed;
+      width: 500px;
+      height: 500px;
+      border-radius: 50%;
+      filter: blur(100px);
+      z-index: -1;
+      opacity: 0.4;
+      animation: float 10s infinite alternate ease-in-out;
+    }
+    .glow-1 { top: -10%; left: -10%; background: var(--primary); }
+    .glow-2 { bottom: -20%; right: -10%; background: var(--accent); }
+
+    @keyframes float {
+      0% { transform: translateY(0px) scale(1); }
+      100% { transform: translateY(30px) scale(1.1); }
+    }
+
+    .container {
+      max-width: 700px;
+      width: 100%;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 15px;
+      margin-bottom: 30px;
+    }
+
+    .brand-logo {
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      font-weight: 800;
+      font-size: 2.5rem;
+      letter-spacing: -1px;
+    }
+
+    .panel {
+      background: var(--panel-bg);
+      backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur);
+      border: 1px solid var(--panel-border);
+      border-radius: 16px;
+      padding: 40px;
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    h2 {
+      font-weight: 600;
+      font-size: 1.5rem;
+      margin-bottom: 10px;
+      color: var(--text);
+      text-align: center;
+    }
+    
+    p.subtitle {
+      color: var(--text-muted);
+      text-align: center;
+      margin-bottom: 30px;
+      font-size: 1rem;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+
+    label {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    input, select {
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid var(--panel-border);
+      color: var(--text);
+      padding: 14px 16px;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 1rem;
+      transition: all 0.3s ease;
+      outline: none;
+      width: 100%;
+    }
+
+    select {
+      appearance: none;
+      background-image: linear-gradient(45deg, transparent 50%, var(--text-muted) 50%), linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+      background-position: calc(100% - 18px) 50%, calc(100% - 12px) 50%;
+      background-size: 6px 6px, 6px 6px;
+      background-repeat: no-repeat;
+    }
+
+    select option {
+      background: #171728;
+      color: var(--text);
+    }
+
+    input:focus, select:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(108, 92, 231, 0.2);
+      background: rgba(0, 0, 0, 0.4);
+    }
+
+    .indexer-list {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+
+    .indexer-item {
+      background: rgba(0,0,0,0.3);
+      border: 1px solid var(--panel-border);
+      padding: 20px;
+      border-radius: 12px;
+      position: relative;
+    }
+    
+    .indexer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+    
+    .indexer-title {
+      font-weight: 600;
+      color: var(--primary-hover);
+    }
+
+    .indexer-help {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      line-height: 1.5;
+      margin: 8px 0 18px;
+    }
+
+    .preset-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: end;
+      margin-bottom: 20px;
+    }
+
+    .preset-link {
+      min-height: 49px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 14px;
+      border: 1px solid rgba(0, 206, 201, 0.35);
+      border-radius: 8px;
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 600;
+      white-space: nowrap;
+      background: rgba(0, 206, 201, 0.08);
+      transition: all 0.2s ease;
+    }
+
+    .preset-link:hover {
+      border-color: var(--accent);
+      background: rgba(0, 206, 201, 0.16);
+      transform: translateY(-1px);
+    }
+
+    .preset-note {
+      margin-top: -10px;
+      margin-bottom: 18px;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      line-height: 1.45;
+    }
+
+    .preset-note strong {
+      color: var(--text);
+    }
+
+    .remove-btn {
+      background: rgba(255, 118, 117, 0.1);
+      color: var(--danger);
+      border: 1px solid var(--danger);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      width: auto;
+      margin: 0;
+      box-shadow: none;
+    }
+    .remove-btn:hover {
+      background: var(--danger);
+      color: white;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .add-btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px dashed var(--panel-border);
+      color: var(--text);
+      box-shadow: none;
+      margin-bottom: 30px;
+    }
+    .add-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: var(--primary);
+    }
+
+    button {
+      background: linear-gradient(135deg, #8e44ad, #9b59b6);
+      color: white;
+      border: none;
+      padding: 16px;
+      border-radius: 8px;
+      font-family: inherit;
+      font-weight: 600;
+      font-size: 1.1rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      width: 100%;
+      margin-top: 10px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+      box-shadow: 0 4px 15px rgba(142, 68, 173, 0.4);
+    }
+
+    button.primary-btn:hover {
+      background: linear-gradient(135deg, #9b59b6, #8e44ad);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(142, 68, 173, 0.5);
+    }
+
+    #result {
+      display: none;
+      margin-top: 30px;
+      padding-top: 20px;
+      border-top: 1px solid var(--panel-border);
+    }
+
+    .link-box {
+      background: rgba(0,0,0,0.4);
+      padding: 15px;
+      border-radius: 8px;
+      word-break: break-all;
+      font-family: monospace;
+      color: #a29bfe;
+      margin-top: 10px;
+      margin-bottom: 15px;
+      font-size: 0.9rem;
+      border: 1px solid var(--panel-border);
+    }
+
+    .btn-install {
+      background: linear-gradient(135deg, #00b894, #55efc4);
+      box-shadow: 0 4px 15px rgba(0, 184, 148, 0.3);
+    }
+
+    .btn-install:hover {
+      background: linear-gradient(135deg, #55efc4, #00b894);
+      box-shadow: 0 6px 20px rgba(0, 184, 148, 0.4);
+    }
+
+    /* Animations */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .fade-in { animation: fadeIn 0.4s ease forwards; }
+
+  </style>
+</head>
+<body>
+
+<div class="ambient-glow glow-1"></div>
+<div class="ambient-glow glow-2"></div>
+
+<div class="container fade-in">
+  <div class="brand" style="display: flex; justify-content: center; width: 100%; margin-bottom: 30px;">
+    <p align="center">
+      <a href="https://www.deepbrid.com/aff/go/pickymarker4906?i=4" target="_blank">
+        <img src="https://www.deepbrid.com/file/get/path/banners.5ea0998723b53/i/236387" alt="Deepbrid Banner" width="728" style="max-width: 100%; height: auto; border-radius: 8px;">
+      </a>
+    </p>
+  </div>
+
+  <div class="panel">
+    <h2>Configure Addon</h2>
+    <p class="subtitle">Generate your personalized Stremio installation link locally.</p>
+
+    <div class="form-group" style="margin-bottom: 20px;">
+      <label>Custom Base URL (Optional)</label>
+      <input type="text" id="customBaseUrl" placeholder="e.g. https://deepbridge.your-paid-url.com" style="margin-bottom: 5px;">
+      <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0;">Leave blank to auto-detect. Useful if you're configuring this behind a proxy but accessing it locally.</p>
+    </div>
+
+    <div class="form-group" style="margin-bottom: 20px;">
+      <label>Deepbrid API Key</label>
+      <input type="password" id="deepbridKey" placeholder="Paste your Premium Deepbrid API Key" required>
+    </div>
+
+    <div style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; margin-bottom: 30px;">
+      <label style="font-size: 0.95rem; color: var(--text); margin-bottom: 10px; display: block;">Official Deepbrid Resolution Limits</label>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div class="form-group" style="margin-bottom: 0;">
+          <label style="font-size: 0.8rem;">4K Limit</label>
+          <input type="text" id="dbLimit2160p" value="all" placeholder="e.g. 5 or all" style="padding: 8px; font-size: 0.9rem;">
+        </div>
+        <div class="form-group" style="margin-bottom: 0;">
+          <label style="font-size: 0.8rem;">1080p Limit</label>
+          <input type="text" id="dbLimit1080p" value="15" placeholder="e.g. 5 or all" style="padding: 8px; font-size: 0.9rem;">
+        </div>
+        <div class="form-group" style="margin-bottom: 0;">
+          <label style="font-size: 0.8rem;">720p Limit</label>
+          <input type="text" id="dbLimit720p" value="15" placeholder="e.g. 5 or all" style="padding: 8px; font-size: 0.9rem;">
+        </div>
+        <div class="form-group" style="margin-bottom: 0;">
+          <label style="font-size: 0.8rem;">SD/Unk Limit</label>
+          <input type="text" id="dbLimitSD" value="15" placeholder="e.g. 5 or all" style="padding: 8px; font-size: 0.9rem;">
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top: 30px; margin-bottom: 10px; border-bottom: 1px solid var(--panel-border); padding-bottom: 10px;">
+      <label style="font-size: 1.1rem; color: var(--text);">Indexers</label>
+    </div>
+    <p class="indexer-help">Choose a preset to auto-fill the API base URL, then paste your API key from that provider. Custom Newznab-compatible indexers and Prowlarr are still supported.</p>
+
+    <div id="indexerContainer" class="indexer-list">
+      <!-- Indexers will be dynamically added here -->
+    </div>
+
+    <button type="button" class="add-btn" onclick="addIndexer()">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+      Add Another Indexer
+    </button>
+
+    <button type="button" class="primary-btn" onclick="generate()">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+      Generate Install Link
+    </button>
+
+    <div id="result">
+      <label>Your Personal Manifest URL</label>
+      <div class="link-box" id="manifestUrl"></div>
+      <button class="btn-install" onclick="copyInstall()">
+        Copy to Clipboard
+      </button>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top: 40px; text-align: left;" id="support-links">
+    <h2 style="text-align: left; justify-content: flex-start; margin-bottom: 20px;">
+      <span style="margin-right: 10px;">🎁</span> Support The Project: Deepbrid Referral Guide
+    </h2>
+    
+    <p style="color: var(--text-muted); line-height: 1.6; margin-bottom: 15px;">
+      This vendor package is <strong style="color: var(--text);">100% free and open-source</strong>. However, maintaining and updating this project takes significant time and effort.
+    </p>
+    
+    <p style="color: var(--text-muted); line-height: 1.6; margin-bottom: 30px;">
+      The <strong style="color: var(--danger);">ONLY</strong> way to support this project and ensure its continued development is by using our <strong style="color: var(--text);">Deepbrid Referral Link</strong> when you sign up or renew your account.
+    </p>
+
+    <div style="text-align: center; margin-bottom: 30px;">
+      <h3 style="margin-bottom: 15px; color: var(--primary-hover);">👉 <a href="https://www.deepbrid.com/aff/go/pickymarker4906" target="_blank" style="color: var(--primary-hover); text-decoration: none; border-bottom: 1px solid var(--primary-hover);">CLICK HERE TO SIGN UP FOR DEEPBRID</a> 👈</h3>
+    </div>
+
+    <hr style="border: 0; border-top: 1px solid var(--panel-border); margin: 30px 0;">
+
+    <h3 style="color: var(--text); margin-bottom: 20px; font-weight: 600;">🛑 How to Properly Use the Referral Link (IMPORTANT)</h3>
+
+    <p style="color: var(--text-muted); margin-bottom: 15px;">
+      To ensure the referral tracks correctly and supports the project, please follow these exact steps:
+    </p>
+
+    <ol style="color: var(--text-muted); padding-left: 20px; line-height: 1.8; margin-bottom: 30px;">
+      <li><strong style="color: var(--text);">Clear Your Cookies/Cache</strong> (or use an Incognito/Private Browsing window) to ensure no old tracking cookies interfere.</li>
+      <li><strong style="color: var(--text);">Click this exact link</strong>: <a href="https://www.deepbrid.com/aff/go/pickymarker4906" target="_blank" style="color: var(--accent); text-decoration: none;">https://www.deepbrid.com/aff/go/pickymarker4906</a></li>
+      <li><strong style="color: var(--text);">Create your account</strong> or <strong style="color: var(--text);">log in</strong> immediately after clicking the link.</li>
+      <li><strong style="color: var(--text);">Purchase your premium plan</strong> in the same browsing session.</li>
+    </ol>
+
+    <div style="background: rgba(255, 118, 117, 0.1); border-left: 4px solid var(--danger); padding: 15px; border-radius: 4px;">
+      <strong style="color: var(--danger); display: block; margin-bottom: 5px;">IMPORTANT</strong>
+      <span style="color: var(--text-muted);">If you navigate away and come back later, the referral tracking might drop. <strong style="color: var(--text);">Always click the link right before making your purchase!</strong></span>
+    </div>
+  </div>
+</div>
+<script>
+  let indexerCount = 0;
+
+  const INDEXER_PRESETS = [
+    { id: 'althub', name: 'AltHub', apiUrl: 'https://api.althub.co.za', keyUrl: 'https://althub.co.za/profile', note: 'Newznab API endpoint. Copy your API key from your AltHub profile.' },
+    { id: 'nzbgeek', name: 'NZBGeek', apiUrl: 'https://api.nzbgeek.info', keyUrl: 'https://nzbgeek.info/profile', note: 'Use your Geek API key from your NZBGeek profile page.' },
+    { id: 'drunkenslug', name: 'DrunkenSlug', apiUrl: 'https://api.drunkenslug.com', keyUrl: 'https://drunkenslug.com/profile', note: 'Paste the API key shown in your DrunkenSlug account/profile area.' },
+    { id: 'nzbplanet', name: 'NZBPlanet', apiUrl: 'https://api.nzbplanet.net', keyUrl: 'https://nzbplanet.net/profile', note: 'Use the API key from your NZBPlanet profile.' },
+    { id: 'nzbfinder', name: 'NZBFinder', apiUrl: 'https://nzbfinder.ws', keyUrl: 'https://nzbfinder.ws/profile', note: 'Use your NZBFinder API key. If your account shows a different API host, paste it manually.' },
+    { id: 'ninjacentral', name: 'NinjaCentral', apiUrl: 'https://ninjacentral.co.za', keyUrl: 'https://ninjacentral.co.za/profile', note: 'Use the API key from your NinjaCentral account.' },
+    { id: 'prowlarr', name: 'Prowlarr / Local Proxy', apiUrl: '', keyUrl: 'https://wiki.servarr.com/prowlarr/settings', note: 'Enter your reachable Prowlarr Newznab base URL and API key from Settings.' },
+    { id: 'custom', name: 'Custom Newznab', apiUrl: '', keyUrl: '', note: 'Use any Newznab-compatible API base URL and API key.' }
+  ];
+
+  function presetOptions() {
+    return INDEXER_PRESETS.map(preset => `<option value="${preset.id}">${preset.name}</option>`).join('');
+  }
+
+  function findPreset(id) {
+    return INDEXER_PRESETS.find(preset => preset.id === id) || INDEXER_PRESETS[INDEXER_PRESETS.length - 1];
+  }
+
+  function addIndexer(name = '', url = '', key = '') {
+    indexerCount++;
+    const id = `indexer-${indexerCount}`;
+    const presetId = INDEXER_PRESETS.find(preset => preset.apiUrl && preset.apiUrl === url)?.id || (url ? 'custom' : 'althub');
+    const preset = findPreset(presetId);
+    
+    const html = `
+      <div class="indexer-item" id="${id}">
+        <div class="indexer-header">
+          <div class="indexer-title">Indexer #${indexerCount}</div>
+          ${indexerCount > 1 ? `<button type="button" class="remove-btn" onclick="removeIndexer('${id}')">Remove</button>` : ''}
+        </div>
+        <div class="preset-row">
+          <div class="form-group" style="margin-bottom: 0;">
+            <label>Indexer Preset</label>
+            <select class="idx-preset" onchange="applyIndexerPreset('${id}', this.value)">
+              ${presetOptions()}
+            </select>
+          </div>
+          <a class="preset-link idx-key-link" href="${preset.keyUrl || '#'}" target="_blank" rel="noopener noreferrer" style="${preset.keyUrl ? '' : 'display:none;'}">Get API Key</a>
+        </div>
+        <p class="preset-note idx-preset-note"><strong>${preset.name}:</strong> ${preset.note}</p>
+        <div class="form-group">
+          <label>Name (Optional)</label>
+          <input type="text" class="idx-name" placeholder="e.g. AltHub Premium" value="${name || preset.name}">
+        </div>
+        <div class="form-group">
+          <label>API Base URL</label>
+          <input type="text" class="idx-url" placeholder="https://api.althub.co.za" value="${url || preset.apiUrl}" required>
+        </div>
+        <div class="form-group">
+          <label>API Key</label>
+          <input type="password" class="idx-key" placeholder="Paste your Indexer API Key" value="${key}" required>
+        </div>
+        <div style="background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px; margin-top: 10px;">
+          <label style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px; display: block;">Indexer Resolution Limits</label>
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px;">
+            <div style="margin-bottom: 0;">
+              <label style="font-size: 0.7rem;">4K Limit</label>
+              <input type="text" class="idx-l4k" value="all" placeholder="4K limit" style="padding: 6px; font-size: 0.8rem; text-align: center;" title="4K Limit">
+            </div>
+            <div style="margin-bottom: 0;">
+              <label style="font-size: 0.7rem;">1080p Limit</label>
+              <input type="text" class="idx-l1080" value="15" placeholder="1080 limit" style="padding: 6px; font-size: 0.8rem; text-align: center;" title="1080p Limit">
+            </div>
+            <div style="margin-bottom: 0;">
+              <label style="font-size: 0.7rem;">720p Limit</label>
+              <input type="text" class="idx-l720" value="15" placeholder="720 limit" style="padding: 6px; font-size: 0.8rem; text-align: center;" title="720p Limit">
+            </div>
+            <div style="margin-bottom: 0;">
+              <label style="font-size: 0.7rem;">SD/Unk Limit</label>
+              <input type="text" class="idx-lsd" value="15" placeholder="SD limit" style="padding: 6px; font-size: 0.8rem; text-align: center;" title="SD/Unk Limit">
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    document.getElementById('indexerContainer').insertAdjacentHTML('beforeend', html);
+    document.getElementById(id).querySelector('.idx-preset').value = presetId;
+  }
+
+  function removeIndexer(id) {
+    document.getElementById(id).remove();
+  }
+
+  function applyIndexerPreset(id, presetId) {
+    const item = document.getElementById(id);
+    const preset = findPreset(presetId);
+    const nameInput = item.querySelector('.idx-name');
+    const urlInput = item.querySelector('.idx-url');
+    const link = item.querySelector('.idx-key-link');
+    const note = item.querySelector('.idx-preset-note');
+
+    if (!nameInput.value.trim() || INDEXER_PRESETS.some(existing => existing.name === nameInput.value.trim())) {
+      nameInput.value = preset.name;
+    }
+    if (preset.apiUrl) {
+      urlInput.value = preset.apiUrl;
+    } else if (presetId !== 'custom') {
+      urlInput.value = '';
+    }
+    if (preset.keyUrl) {
+      link.href = preset.keyUrl;
+      link.style.display = 'inline-flex';
+    } else {
+      link.removeAttribute('href');
+      link.style.display = 'none';
+    }
+    note.innerHTML = `<strong>${preset.name}:</strong> ${preset.note}`;
+  }
+
+  function generate() {
+    const deepbridKey = document.getElementById('deepbridKey').value.trim();
+    if (!deepbridKey) {
+      alert("Please provide a Deepbrid API Key.");
+      return;
+    }
+
+    const getLimitVal = (val) => {
+      if (!val) return 'all';
+      val = val.trim().toLowerCase();
+      if (val === 'all' || val === '') return 'all';
+      const num = parseInt(val);
+      return isNaN(num) ? 'all' : num;
+    };
+
+    const indexerItems = document.querySelectorAll('.indexer-item');
+    const indexers = [];
+
+    for (const item of indexerItems) {
+      const name = item.querySelector('.idx-name').value.trim();
+      const url = item.querySelector('.idx-url').value.trim();
+      const key = item.querySelector('.idx-key').value.trim();
+
+      if (!url || !key) {
+        alert("Please ensure all Indexer API URLs and Keys are filled out.");
+        return;
+      }
+
+      indexers.push({ 
+        name, 
+        url, 
+        key,
+        limits: {
+          "2160p": getLimitVal(item.querySelector('.idx-l4k').value),
+          "1080p": getLimitVal(item.querySelector('.idx-l1080').value),
+          "720p": getLimitVal(item.querySelector('.idx-l720').value),
+          "SD": getLimitVal(item.querySelector('.idx-lsd').value)
+        }
+      });
+    }
+
+    if (indexers.length === 0) {
+      alert("You must add at least one indexer.");
+      return;
+    }
+
+    const configObj = {
+      deepbridApiKey: deepbridKey,
+      indexers: indexers,
+      limits: {
+        "2160p": getLimitVal(document.getElementById('dbLimit2160p').value),
+        "1080p": getLimitVal(document.getElementById('dbLimit1080p').value),
+        "720p": getLimitVal(document.getElementById('dbLimit720p').value),
+        "SD": getLimitVal(document.getElementById('dbLimitSD').value)
+      }
+    };
+
+    const configStr = btoa(JSON.stringify(configObj))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+      
+    let baseUrl = document.getElementById('customBaseUrl').value.trim();
+    if (!baseUrl) {
+      baseUrl = window.location.origin;
+    }
+    if (baseUrl.endsWith('/')) {
+      baseUrl = baseUrl.slice(0, -1);
+    }
+    
+    let url = baseUrl + '/' + configStr + '/manifest.json';
+    
+    document.getElementById('manifestUrl').innerText = url;
+    document.getElementById('result').style.display = 'block';
+  }
+
+  function copyInstall() {
+    const url = document.getElementById('manifestUrl').innerText;
+    navigator.clipboard.writeText(url).then(() => {
+      alert("Copied to clipboard!\n\n1. Open Stremio.\n2. Paste this link into the Search Bar.\n3. Click Install.");
+    });
+  }
+
+  window.onload = () => {
+    addIndexer('', 'https://api.althub.co.za', '');
+  };
+</script>
+
+</body>
+</html>
