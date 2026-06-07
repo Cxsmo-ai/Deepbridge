@@ -4,24 +4,13 @@ Deepbridge is designed to run well in Docker.
 
 ## Published container images
 
-Images are published to GitHub Container Registry and mirrored to Docker Hub on pushes to `main` and version tags:
+Images are published to Docker Hub on pushes to `main` and version tags:
 
 ```bash
-docker pull ghcr.io/cxsmo-ai/deepbridge:latest
 docker pull pickymarker/deepbridge:latest
 ```
 
-Run the published GHCR image:
-
-```bash
-docker run --rm \
-  --name deepbridge \
-  -p 7000:7000 \
-  --env-file .env \
-  ghcr.io/cxsmo-ai/deepbridge:latest
-```
-
-Run the Docker Hub mirror:
+Run the published Docker Hub image:
 
 ```bash
 docker run --rm \

@@ -7,11 +7,10 @@ Deepbridge shows live project status and usage signals in the README with GitHub
 The README includes live badges for:
 
 - CI workflow status.
-- GHCR publishing workflow status.
-- Link to the GHCR image package.
-- Docker Hub pull count for the `pickymarker/deepbridge` mirror.
-- Docker Hub image size for the `latest` mirror tag.
-- Docker Hub stars for the `pickymarker/deepbridge` mirror.
+- Docker Hub publishing workflow status.
+- Docker Hub pull count for `pickymarker/deepbridge`.
+- Docker Hub image size for the `latest` tag.
+- Docker Hub stars for `pickymarker/deepbridge`.
 - GitHub release asset downloads.
 - GitHub stars.
 - GitHub forks.
@@ -29,19 +28,9 @@ This count updates automatically through Shields/GitHub once release assets exis
 
 Important: GitHub automatically generated source archives may behave differently from uploaded release assets. For best download tracking, attach files such as checksums, packaged archives, or installer artifacts to GitHub Releases.
 
-## GHCR package tracking
+## Docker Hub image tracking
 
-The Docker image is published to GitHub Container Registry:
-
-```text
-ghcr.io/cxsmo-ai/deepbridge:latest
-```
-
-The README links to the package page and shows the GHCR publish workflow status.
-
-## Docker Hub mirror tracking
-
-Deepbridge is mirrored to Docker Hub at:
+Deepbridge is published to Docker Hub at:
 
 ```text
 pickymarker/deepbridge
@@ -55,31 +44,19 @@ https://img.shields.io/docker/stars/pickymarker/deepbridge
 https://img.shields.io/docker/image-size/pickymarker/deepbridge/latest
 ```
 
-These badges are the public live Docker pull statistics for the Docker Hub mirror.
+These badges are the public live Docker pull statistics for the primary Docker Hub image.
 
-## GHCR pull/download count limitation
+## GHCR note
 
-GitHub Container Registry currently does **not** provide a public live pull/download count badge for container images like Docker Hub does.
+Deepbridge previously published to GHCR, but Docker Hub is now the primary public image because Docker Hub exposes public pull statistics and GHCR does not.
 
-That means this can be shown live:
+## Other tracking options
 
-- whether GHCR publishing succeeded
-- where the image package lives
-- which tags are published on the package page
+If you want additional public download counters, use one of these approaches:
 
-But this cannot be shown publicly from GitHub alone:
-
-- total GHCR pulls
-- live GHCR pull count badge
-- user-level identity for who pulled the image
-
-## Options if true public Docker pull counts are required
-
-If you want a public pull counter, use one of these approaches:
-
-1. **Mirror to Docker Hub**
+1. **Docker Hub**
    - Docker Hub exposes public pull counts.
-   - Deepbridge uses this approach with `pickymarker/deepbridge`.
+   - Deepbridge uses this as the primary image with `pickymarker/deepbridge`.
 
 2. **Publish GitHub Releases**
    - Attach release artifacts and track release asset downloads.
