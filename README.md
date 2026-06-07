@@ -28,6 +28,20 @@
 
 ## Pull from Docker Hub
 
+Docker Hub image:
+
+```text
+https://hub.docker.com/r/pickymarker/deepbridge
+```
+
+Image name:
+
+```text
+pickymarker/deepbridge:latest
+```
+
+Pull command:
+
 ```bash
 docker pull pickymarker/deepbridge:latest
 ```
