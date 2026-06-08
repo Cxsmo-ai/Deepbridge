@@ -4,6 +4,8 @@ import fastifyFormbody from "@fastify/formbody";
 import fastifyCors from "@fastify/cors";
 import path from "path";
 import dotenv from "dotenv";
+import { request as undiciRequest } from "undici";
+import { randomUUID } from "crypto";
 
 import { manifest } from "./stremio/manifest";
 import { DeepbridClient, MediaRequest } from "./deepbrid/apiClient";
@@ -68,6 +70,7 @@ type ResolvePayload = {
 
 const resolveCache = new Map<string, { url: string; expiresAt: number }>();
 const resolveInflight = new Map<string, Promise<string>>();
+const playCache = new Map<string, { url: string; expiresAt: number }>();
 let lastPregrabStats = {
   mode: "direct",
   startedAt: "",
@@ -85,15 +88,18 @@ let lastPregrabStats = {
   bySource: {} as Record<string, { attempted: number; ready: number; failed: number; skipped: number }>
 };
 // Final Deepbrid/myfast playback URLs can be short-lived or single-use.
-// Keep only in-flight de-duping, not long-lived cached redirects.
+// Keep only in-flight de-duping plus a short opaque play proxy cache.
 const resolveTtlMs = 0;
+const playTtlMs = 15 * 60 * 1000;
 
 function cacheHealth() {
   return {
     resolve: {
       entries: resolveCache.size,
       inflight: resolveInflight.size,
-      ttlMs: resolveTtlMs
+      ttlMs: resolveTtlMs,
+      playEntries: playCache.size,
+      playTtlMs
     },
     deepbridAdd: lastPregrabStats,
     indexerSearch: getLastIndexerSearchStats()
@@ -279,6 +285,48 @@ async function resolveNzbToPlayableUrl(client: DeepbridClient, payload: ResolveP
   } finally {
     resolveInflight.delete(cacheKey);
   }
+}
+
+async function proxyPlayableUrl(playableUrl: string, request: any, reply: any) {
+  const headers: Record<string, string> = {
+    "User-Agent": String(request.headers["user-agent"] || "Deepbridge/1.0"),
+    "Accept": String(request.headers.accept || "*/*")
+  };
+  if (request.headers.range) {
+    headers.Range = String(request.headers.range);
+  }
+
+  let currentUrl = playableUrl;
+  let upstream = await undiciRequest(currentUrl, { headers });
+  for (let redirects = 0; redirects < 5 && upstream.statusCode >= 300 && upstream.statusCode < 400 && upstream.headers.location; redirects++) {
+    currentUrl = new URL(String(upstream.headers.location), currentUrl).toString();
+    await upstream.body.text();
+    upstream = await undiciRequest(currentUrl, { headers });
+  }
+
+  reply.code(upstream.statusCode);
+  for (const header of ["content-type", "content-length", "content-range", "accept-ranges", "cache-control"]) {
+    const value = upstream.headers[header];
+    if (value) reply.header(header, value);
+  }
+  reply.header("Access-Control-Allow-Origin", "*");
+  return reply.send(upstream.body);
+}
+
+function storePlayableUrl(playableUrl: string): string {
+  const id = randomUUID();
+  playCache.set(id, { url: playableUrl, expiresAt: Date.now() + playTtlMs });
+  return id;
+}
+
+function getPlayableUrl(id: string): string | undefined {
+  const cached = playCache.get(id);
+  if (!cached) return undefined;
+  if (cached.expiresAt <= Date.now()) {
+    playCache.delete(id);
+    return undefined;
+  }
+  return cached.url;
 }
 
 function candidateToResolvePayload(candidate: SourceCandidate): ResolvePayload | null {
@@ -554,10 +602,26 @@ app.get("/:token/resolve/:encodedNzbUrl", async (request, reply) => {
 
     const client = new DeepbridClient(apiKey);
     const playableUrl = await resolveNzbToPlayableUrl(client, payload);
-    return reply.redirect(playableUrl);
+    const playId = storePlayableUrl(playableUrl);
+    return reply.redirect(`${getRequestBaseUrl(request)}/${token}/play/${playId}`);
   } catch (err) {
     app.log.error(err);
     return reply.status(500).send("Internal error while resolving stream.");
+  }
+});
+
+app.get("/:token/play/:playId", async (request, reply) => {
+  const { playId } = request.params as { token: string, playId: string };
+
+  try {
+    const playableUrl = getPlayableUrl(playId);
+    if (!playableUrl) {
+      return reply.status(410).send("Playback URL expired. Please reselect the stream.");
+    }
+    return await proxyPlayableUrl(playableUrl, request, reply);
+  } catch (err) {
+    app.log.error(err);
+    return reply.status(502).send("Internal error while proxying stream.");
   }
 });
 
