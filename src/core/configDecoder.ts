@@ -12,6 +12,7 @@ export interface IndexerConfig {
 
 export interface UserConfig {
   deepbridApiKey: string;
+  externalResultMode?: "direct" | "prechecked";
   // Legacy
   indexerUrl?: string;
   indexerApiKey?: string;

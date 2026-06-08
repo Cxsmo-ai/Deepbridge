@@ -68,9 +68,97 @@ type ResolvePayload = {
 
 const resolveCache = new Map<string, { url: string; expiresAt: number }>();
 const resolveInflight = new Map<string, Promise<string>>();
+let lastPregrabStats = {
+  mode: "direct",
+  startedAt: "",
+  finishedAt: "",
+  totalCandidates: 0,
+  attempted: 0,
+  ready: 0,
+  failed: 0,
+  skipped: 0,
+  skippedArchives: 0,
+  deadlineMs: 0,
+  maxAttempts: 0,
+  maxReady: 0,
+  concurrency: 0
+};
 // Final Deepbrid/myfast playback URLs can be short-lived or single-use.
 // Keep only in-flight de-duping, not long-lived cached redirects.
 const resolveTtlMs = 0;
+
+function cacheHealth() {
+  return {
+    resolve: {
+      entries: resolveCache.size,
+      inflight: resolveInflight.size,
+      ttlMs: resolveTtlMs
+    },
+    deepbridAdd: lastPregrabStats
+  };
+}
+
+function downloadsCount(data: any): number | undefined {
+  if (Array.isArray(data)) return data.length;
+  if (Array.isArray(data?.downloads)) return data.downloads.length;
+  if (Array.isArray(data?.data)) return data.data.length;
+  if (Array.isArray(data?.items)) return data.items.length;
+  return undefined;
+}
+
+async function deepbridHealth(apiKey: string) {
+  if (!apiKey) {
+    return {
+      configured: false,
+      ok: false,
+      error: "missing_api_key"
+    };
+  }
+
+  const startedAt = Date.now();
+  try {
+    const client = new DeepbridClient(apiKey);
+    const data = await client.getApiKeyInfo(4000) as any;
+    let cache = {
+      ok: false,
+      downloads: undefined as number | undefined,
+      error: undefined as string | undefined
+    };
+    try {
+      const downloads = await client.getDownloads(4000) as any;
+      cache = {
+        ok: !downloads?.error,
+        downloads: downloadsCount(downloads),
+        error: downloads?.error ? "deepbrid_downloads_error" : undefined
+      };
+    } catch {
+      cache = {
+        ok: false,
+        downloads: undefined,
+        error: "deepbrid_downloads_unreachable"
+      };
+    }
+    return {
+      configured: true,
+      ok: !data?.error,
+      latencyMs: Date.now() - startedAt,
+      cache,
+      error: data?.error ? "deepbrid_api_error" : undefined
+    };
+  } catch {
+    return {
+      configured: true,
+      ok: false,
+      latencyMs: Date.now() - startedAt,
+      cache: {
+        ok: false,
+        downloads: undefined,
+        error: "deepbrid_health_unavailable"
+      },
+      error: "deepbrid_unreachable"
+    };
+  }
+}
 
 function resolveCacheKey(payload: ResolvePayload): string {
   return [
@@ -196,28 +284,51 @@ function candidateToResolvePayload(candidate: SourceCandidate): ResolvePayload |
   };
 }
 
-async function pregrabExternalCandidates(client: DeepbridClient, candidates: SourceCandidate[]): Promise<SourceCandidate[]> {
+async function pregrabExternalCandidates(client: DeepbridClient, candidates: SourceCandidate[], mode: "direct" | "prechecked" = "direct"): Promise<SourceCandidate[]> {
   const startedAt = Date.now();
-  const deadlineMs = 12000;
-  const maxAttempts = 10;
-  const maxReady = 6;
+  const directMode = mode === "direct";
+  const deadlineMs = directMode ? 22000 : 15000;
+  const maxAttempts = directMode ? 48 : 24;
+  const maxReady = directMode ? 24 : 12;
   const externalCandidates = candidates
     .filter(candidate => candidate.origin !== "deepbrid-official")
     .sort((a, b) => b.score - a.score)
     .slice(0, maxAttempts);
   const readyCandidates: SourceCandidate[] = [];
-  const concurrency = 2;
+  const concurrency = directMode ? 4 : 3;
+  const stats = {
+    mode,
+    startedAt: new Date(startedAt).toISOString(),
+    finishedAt: "",
+    totalCandidates: candidates.length,
+    attempted: 0,
+    ready: 0,
+    failed: 0,
+    skipped: 0,
+    skippedArchives: 0,
+    deadlineMs,
+    maxAttempts,
+    maxReady,
+    concurrency
+  };
   let index = 0;
 
   async function worker() {
     while (index < externalCandidates.length && readyCandidates.length < maxReady && Date.now() - startedAt < deadlineMs) {
       const candidate = externalCandidates[index++];
       const payload = candidateToResolvePayload(candidate);
-      if (!payload) continue;
+      if (!payload) {
+        stats.skipped++;
+        continue;
+      }
 
       try {
-        const playableUrl = await resolveNzbToPlayableUrl(client, payload, 7000);
-        if (isArchiveUrl(playableUrl)) continue;
+        stats.attempted++;
+        const playableUrl = await resolveNzbToPlayableUrl(client, payload, directMode ? 9000 : 7000);
+        if (isArchiveUrl(playableUrl)) {
+          stats.skippedArchives++;
+          continue;
+        }
 
         readyCandidates.push({
           ...candidate,
@@ -225,13 +336,17 @@ async function pregrabExternalCandidates(client: DeepbridClient, candidates: Sou
           playableUrl,
           score: candidate.score + 5000
         });
+        stats.ready++;
       } catch {
+        stats.failed++;
         // Invalid or unresolved indexer results are intentionally hidden.
       }
     }
   }
 
   await Promise.all(Array.from({ length: Math.min(concurrency, externalCandidates.length) }, worker));
+  stats.finishedAt = new Date().toISOString();
+  lastPregrabStats = stats;
   return readyCandidates;
 }
 
@@ -293,7 +408,8 @@ async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, 
     ]);
     const officialCandidates = officialResult.status === "fulfilled" ? officialResult.value : [];
     const indexerCandidates = indexerResult.status === "fulfilled" ? indexerResult.value : [];
-    const readyIndexerCandidates = await pregrabExternalCandidates(client, indexerCandidates);
+    const externalMode = userConfig?.externalResultMode === "prechecked" ? "prechecked" : "direct";
+    const readyIndexerCandidates = await pregrabExternalCandidates(client, indexerCandidates, externalMode);
     
     const candidates = dedupeCandidates([...officialCandidates, ...readyIndexerCandidates]);
     const streams = formatStreams(candidates, dynamicBaseUrl, token);
@@ -364,7 +480,27 @@ app.get("/:token/stream/series/:id.json", async (request, reply) => {
 });
 
 app.get("/health", async () => {
-  return { status: "ok" };
+  return {
+    status: "ok",
+    cache: cacheHealth(),
+    deepbrid: await deepbridHealth(process.env.DEEPBRID_API_KEY || "")
+  };
+});
+
+app.get("/:token/health", async (request) => {
+  const { token } = request.params as { token: string };
+  const userConfig = decodeConfig(token);
+  const apiKey = userConfig?.deepbridApiKey || process.env.DEEPBRID_API_KEY || "";
+  return {
+    status: "ok",
+    cache: cacheHealth(),
+    deepbrid: await deepbridHealth(apiKey),
+    config: {
+      hasTokenConfig: Boolean(userConfig),
+      externalResultMode: userConfig?.externalResultMode || "direct",
+      indexers: Array.isArray(userConfig?.indexers) ? userConfig.indexers.length : 0
+    }
+  };
 });
 
 app.get("/:token/resolve/:encodedNzbUrl", async (request, reply) => {

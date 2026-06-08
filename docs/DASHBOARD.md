@@ -18,10 +18,13 @@ The configuration panel lets users enter:
 
 - Public/base addon URL override.
 - Deepbrid API key.
+- External result mode for direct Deepbrid links or strict prechecked external streams.
 - Official Deepbrid resolution limits.
 - One or more external Newznab-compatible indexers.
 - Indexer presets such as AltHub, NZBGeek, DrunkenSlug, NZBPlanet, NZBFinder, NinjaCentral, Prowlarr/local proxy, and custom Newznab.
 - Per-indexer resolution limits.
+
+Direct Deepbrid links mode is recommended. It attempts more Newznab/AltHub candidates through Deepbrid and only shows direct playable Deepbrid/myfast links in Stremio.
 
 When the user clicks **Generate Install Link**, the dashboard encodes the configuration into a private Stremio manifest URL:
 

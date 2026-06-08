@@ -46,8 +46,11 @@ export class DeepbridClient {
     return await res.body.json();
   }
 
-  async getApiKeyInfo() {
-    const res = await request(`${this.baseUrl}/apikey/info`, { headers: this.headers });
+  async getApiKeyInfo(timeoutMs?: number) {
+    const res = await request(`${this.baseUrl}/apikey/info`, {
+      headers: this.headers,
+      signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined
+    });
     return await res.body.json();
   }
 
@@ -79,8 +82,11 @@ export class DeepbridClient {
     return await res.body.json();
   }
 
-  async getDownloads() {
-    const res = await request(`${this.baseUrl}/downloads`, { headers: this.headers });
+  async getDownloads(timeoutMs?: number) {
+    const res = await request(`${this.baseUrl}/downloads`, {
+      headers: this.headers,
+      signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined
+    });
     return await res.body.json();
   }
 }

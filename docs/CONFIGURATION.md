@@ -23,11 +23,26 @@ The page can encode user-specific settings into a Stremio manifest URL. Treat ge
 
 ## External indexers
 
-External indexers should be Newznab-compatible. Deepbridge searches them, ranks results, submits selected NZBs to Deepbrid, hides failures, filters archives, and returns direct Deepbrid playback URLs for valid video files.
+External indexers should be Newznab-compatible. Deepbridge searches them with TV/movie-specific Newznab queries plus broader fallback searches, ranks results, filters obvious archive-only entries, and resolves selected NZBs through Deepbrid.
+
+## External result mode
+
+The dashboard supports two external result modes:
+
+- `direct` - recommended default. Deepbridge attempts more external candidates through Deepbrid and only shows streams after Deepbrid returns a direct playable URL.
+- `prechecked` - stricter/faster mode. Deepbridge attempts fewer external candidates and only shows streams confirmed playable during the stream request.
+
+Both modes avoid unresolved proxy-style Stremio entries. External results shown in Stremio are direct Deepbrid/myfast playback URLs.
 
 ## Result limits
 
 Resolution-specific limits can control how many results appear for 2160p, 1080p, 720p, and SD.
+
+## Health and cache checks
+
+Use `/health` to check addon status, local resolve cache/in-flight counts, last Deepbrid add/precheck stats, and fallback Deepbrid API status.
+
+Use `/<configuration-token>/health` to check the same diagnostics for a generated dashboard configuration without exposing API keys or raw cached URLs.
 
 ## Security note
 

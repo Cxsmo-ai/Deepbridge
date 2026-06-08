@@ -66,7 +66,8 @@ Deepbridge is built for people who want a simple addon URL, a clean configuratio
 
 - Deepbrid official stream support.
 - Optional external Usenet indexer support.
-- External pregrab: indexer NZBs are submitted to Deepbrid before being shown.
+- Direct external result mode: pre-adds/prechecks more indexer NZBs through Deepbrid before showing them.
+- External pregrab: indexer NZBs are submitted to Deepbrid before being shown as direct playback links.
 - Broken external results are hidden when Deepbrid cannot expose a video file.
 - Archive/RAR results are filtered from external results.
 - Direct final playback URLs; the addon does not proxy video by default.
@@ -74,7 +75,26 @@ Deepbridge is built for people who want a simple addon URL, a clean configuratio
 - Better release parsing for resolution, quality, codec, HDR, audio, release group, season packs, and single episodes.
 - Clean Stremio stream cards with source, readiness, size, and metadata.
 - Docker, Docker Compose, and local Node.js workflows.
+- Health endpoints for addon status, local resolve cache, and sanitized Deepbrid API/download-cache checks.
 - GitHub-ready project structure with CI, support, security, and contribution templates.
+
+## External result modes
+
+Deepbridge supports two external Newznab/AltHub result modes from the dashboard:
+
+- `Direct Deepbrid links` - recommended. Attempts more AltHub/Newznab candidates through Deepbrid and only shows streams after Deepbrid returns a direct playable URL.
+- `Strict prechecked` - faster/stricter. Attempts fewer candidates and only shows streams confirmed playable during the stream request.
+
+Both modes avoid exposing unresolved addon proxy links in Stremio results. External streams shown in Stremio are direct Deepbrid/myfast playback URLs.
+
+## Health checks
+
+```text
+/health
+/<configuration-token>/health
+```
+
+Health responses include addon status, local resolve cache/in-flight counts, last Deepbrid add/precheck stats, and sanitized Deepbrid API/download-cache status. They do not expose API keys, indexer keys, playback URLs, or NZB URLs.
 
 ## Quick start
 

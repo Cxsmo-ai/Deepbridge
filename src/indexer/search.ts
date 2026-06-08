@@ -106,24 +106,32 @@ function buildSearchUrls(indexer: any, media: MediaRequest, metadata: MediaMetad
   const urls: string[] = [];
   const imdb = media.imdbId.startsWith("tt") ? media.imdbId.replace("tt", "") : "";
   const titles = buildQueryTitles(metadata);
+  const baseUrl = String(indexer.base_url || "").replace(/\/+$/, "");
+  const seasonEpisode = media.type === "series" && media.season && media.episode
+    ? `S${String(media.season).padStart(2, "0")}E${String(media.episode).padStart(2, "0")}`
+    : "";
 
   if (media.type === "movie") {
-    if (imdb) urls.push(`${indexer.base_url}/api?t=movie&apikey=${indexer.encrypted_api_key}&imdbid=${imdb}&limit=100&o=json`);
+    if (imdb) urls.push(`${baseUrl}/api?t=movie&apikey=${indexer.encrypted_api_key}&imdbid=${imdb}&limit=100&o=json`);
     for (const title of titles) {
-      urls.push(`${indexer.base_url}/api?t=movie&apikey=${indexer.encrypted_api_key}&q=${encodeURIComponent(title)}&limit=100&o=json`);
+      urls.push(`${baseUrl}/api?t=movie&apikey=${indexer.encrypted_api_key}&q=${encodeURIComponent(title)}&limit=100&o=json`);
+      urls.push(`${baseUrl}/api?t=search&apikey=${indexer.encrypted_api_key}&q=${encodeURIComponent(title)}&limit=100&o=json`);
     }
   } else {
-    for (const title of titles) {
-      urls.push(`${indexer.base_url}/api?t=tvsearch&apikey=${indexer.encrypted_api_key}&q=${encodeURIComponent(title)}&season=${media.season}&ep=${media.episode}&o=json`);
-      urls.push(`${indexer.base_url}/api?t=tvsearch&apikey=${indexer.encrypted_api_key}&q=${encodeURIComponent(title)}&season=${media.season}&o=json`);
-    }
     if (imdb) {
-      urls.push(`${indexer.base_url}/api?t=tvsearch&apikey=${indexer.encrypted_api_key}&imdbid=${imdb}&season=${media.season}&ep=${media.episode}&o=json`);
-      urls.push(`${indexer.base_url}/api?t=tvsearch&apikey=${indexer.encrypted_api_key}&imdbid=${imdb}&season=${media.season}&o=json`);
+      urls.push(`${baseUrl}/api?t=tvsearch&apikey=${indexer.encrypted_api_key}&imdbid=${imdb}&season=${media.season}&ep=${media.episode}&limit=100&o=json`);
+      urls.push(`${baseUrl}/api?t=tvsearch&apikey=${indexer.encrypted_api_key}&imdbid=${imdb}&season=${media.season}&limit=100&o=json`);
+    }
+    for (const title of titles) {
+      urls.push(`${baseUrl}/api?t=tvsearch&apikey=${indexer.encrypted_api_key}&q=${encodeURIComponent(title)}&season=${media.season}&ep=${media.episode}&limit=100&o=json`);
+      urls.push(`${baseUrl}/api?t=tvsearch&apikey=${indexer.encrypted_api_key}&q=${encodeURIComponent(title)}&season=${media.season}&limit=100&o=json`);
+      if (seasonEpisode) {
+        urls.push(`${baseUrl}/api?t=search&apikey=${indexer.encrypted_api_key}&q=${encodeURIComponent(`${title} ${seasonEpisode}`)}&limit=100&o=json`);
+      }
     }
   }
 
-  return [...new Set(urls)].slice(0, 8);
+  return [...new Set(urls)].slice(0, 18);
 }
 
 function asArray(items: any): any[] {
@@ -148,6 +156,7 @@ export async function getIndexerSources(
         name: idx.name || `Custom Indexer ${i + 1}`,
         base_url: idx.url,
         encrypted_api_key: idx.key,
+        limits: idx.limits,
         type: "althub"
       }));
     }

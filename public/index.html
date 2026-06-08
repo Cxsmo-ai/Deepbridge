@@ -353,6 +353,15 @@
       <input type="password" id="deepbridKey" placeholder="Paste your Premium Deepbrid API Key" required>
     </div>
 
+    <div class="form-group" style="margin-bottom: 20px;">
+      <label>External Result Mode</label>
+      <select id="externalResultMode">
+        <option value="direct" selected>Direct Deepbrid links: add/precheck more results before showing them</option>
+        <option value="prechecked">Strict prechecked: fewer attempts, only confirmed playable links</option>
+      </select>
+      <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 5px;">Direct Deepbrid links is recommended. Deepbridge attempts more AltHub/Newznab results through Deepbrid and only shows direct playable Deepbrid/myfast links in Stremio.</p>
+    </div>
+
     <div style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; margin-bottom: 30px;">
       <label style="font-size: 0.95rem; color: var(--text); margin-bottom: 10px; display: block;">Official Deepbrid Resolution Limits</label>
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
@@ -603,6 +612,7 @@
 
     const configObj = {
       deepbridApiKey: deepbridKey,
+      externalResultMode: document.getElementById('externalResultMode').value,
       indexers: indexers,
       limits: {
         "2160p": getLimitVal(document.getElementById('dbLimit2160p').value),

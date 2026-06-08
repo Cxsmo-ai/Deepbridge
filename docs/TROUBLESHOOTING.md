@@ -10,6 +10,15 @@ docker compose logs -f deepbridge
 
 Verify `.env` and port mappings.
 
+Health endpoints:
+
+```text
+/health
+/<configuration-token>/health
+```
+
+These endpoints report addon status, local resolve cache/in-flight counts, last Deepbrid add/precheck stats, and sanitized Deepbrid API/download-cache health. They do not return API keys, indexer keys, playback URLs, or NZB URLs.
+
 ## Stremio does not show streams
 
 - Confirm the manifest URL is installed correctly.
@@ -20,13 +29,15 @@ Verify `.env` and port mappings.
 
 ## Official streams work but external streams do not
 
-External streams depend on indexer results and Deepbrid being able to expose a video file. Deepbridge filters archive-only results and hides failed pregrabs.
+External streams depend on indexer results and Deepbrid being able to expose a video file. Deepbridge filters obvious archive-only results and prioritizes successful pregrabs.
 
 Try:
 
 - Refresh the episode in Stremio.
 - Restart Stremio to clear stale stream entries.
-- Check that external entries say `Prechecked`.
+- Use `Direct Deepbrid links` external result mode if you want Deepbridge to attempt more AltHub/Newznab candidates before showing results.
+- Check whether external entries say `Prechecked`.
+- Check `/<configuration-token>/health` for Deepbrid and cache status.
 - Check sanitized server logs.
 
 ## Playback is slow to start
