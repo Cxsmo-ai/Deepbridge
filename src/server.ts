@@ -289,15 +289,16 @@ function candidateToResolvePayload(candidate: SourceCandidate): ResolvePayload |
 async function pregrabExternalCandidates(client: DeepbridClient, candidates: SourceCandidate[], mode: "direct" | "prechecked" = "direct"): Promise<SourceCandidate[]> {
   const startedAt = Date.now();
   const directMode = mode === "direct";
-  const deadlineMs = directMode ? 35000 : 22000;
-  const maxAttempts = directMode ? 96 : 48;
-  const maxReady = directMode ? 48 : 24;
+  const deadlineMs = directMode ? 6000 : 22000;
+  const maxAttempts = directMode ? 16 : 48;
+  const maxReady = directMode ? 8 : 24;
   const externalCandidates = candidates
     .filter(candidate => candidate.origin !== "deepbrid-official")
+    .filter(candidate => !directMode || !sourceKey(candidate).toLowerCase().includes("easynews"))
     .sort((a, b) => b.score - a.score)
     .slice(0, maxAttempts);
   const readyCandidates: SourceCandidate[] = [];
-  const concurrency = directMode ? 6 : 4;
+  const concurrency = directMode ? 3 : 4;
   const stats = {
     mode,
     startedAt: new Date(startedAt).toISOString(),
@@ -330,7 +331,7 @@ async function pregrabExternalCandidates(client: DeepbridClient, candidates: Sou
   function addTimeoutFor(candidate: SourceCandidate): number {
     const source = sourceKey(candidate).toLowerCase();
     if (source.includes("easynews")) return directMode ? 22000 : 16000;
-    return directMode ? 9000 : 7000;
+    return directMode ? 4500 : 7000;
   }
 
   async function worker() {
@@ -435,8 +436,11 @@ async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, 
     const indexerCandidates = indexerResult.status === "fulfilled" ? indexerResult.value : [];
     const externalMode = userConfig?.externalResultMode === "prechecked" ? "prechecked" : "direct";
     const readyIndexerCandidates = await pregrabExternalCandidates(client, indexerCandidates, externalMode);
+    const externalCandidates = externalMode === "direct"
+      ? [...indexerCandidates, ...readyIndexerCandidates]
+      : readyIndexerCandidates;
     
-    const candidates = dedupeCandidates([...officialCandidates, ...readyIndexerCandidates]);
+    const candidates = dedupeCandidates([...officialCandidates, ...externalCandidates]);
     const streams = formatStreams(candidates, dynamicBaseUrl, token);
     
     // Fallback if empty
