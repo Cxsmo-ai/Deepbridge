@@ -167,6 +167,29 @@ function normalizeNewznabApiUrl(rawBaseUrl: string): string {
   return `${baseUrl}/api`;
 }
 
+function normalizeIndexerDownloadUrl(rawUrl: string, indexer: any): string {
+  let value = String(rawUrl || "").trim();
+  if (value.includes("&") && !value.includes("?")) {
+    value = value.replace("&", "?");
+  }
+
+  try {
+    const configuredApiUrl = new URL(normalizeNewznabApiUrl(String(indexer.base_url || "")));
+    const url = new URL(value, configuredApiUrl);
+
+    // Some bridges generate links from their internal HTTP origin while sitting
+    // behind HTTPS Traefik. Deepbrid must fetch the public configured origin.
+    if (url.hostname === configuredApiUrl.hostname || isEasynewsIndexer(indexer)) {
+      url.protocol = configuredApiUrl.protocol;
+      url.host = configuredApiUrl.host;
+    }
+
+    return url.toString();
+  } catch {
+    return value;
+  }
+}
+
 function buildNewznabUrl(baseUrl: string, params: Record<string, string | number | undefined>): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
@@ -578,10 +601,7 @@ export async function getIndexerSources(
         const attrs = attrMap(item);
         let nzbUrl = getNzbUrl(item, attrs);
         if (!nzbUrl) continue;
-        
-        if (nzbUrl.includes("&") && !nzbUrl.includes("?")) {
-          nzbUrl = nzbUrl.replace("&", "?");
-        }
+        nzbUrl = normalizeIndexerDownloadUrl(nzbUrl, indexer);
 
         const title = resolveFirst(item.title, attrs.title, parseGuid(item.guid), "Deepbrid NZB");
         if (isArchiveRelease(title)) continue;

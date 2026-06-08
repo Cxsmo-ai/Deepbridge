@@ -327,6 +327,12 @@ async function pregrabExternalCandidates(client: DeepbridClient, candidates: Sou
     return stats.bySource[key];
   }
 
+  function addTimeoutFor(candidate: SourceCandidate): number {
+    const source = sourceKey(candidate).toLowerCase();
+    if (source.includes("easynews")) return directMode ? 22000 : 16000;
+    return directMode ? 9000 : 7000;
+  }
+
   async function worker() {
     while (index < externalCandidates.length && readyCandidates.length < maxReady && Date.now() - startedAt < deadlineMs) {
       const candidate = externalCandidates[index++];
@@ -340,7 +346,7 @@ async function pregrabExternalCandidates(client: DeepbridClient, candidates: Sou
       try {
         stats.attempted++;
         sourceStats(candidate).attempted++;
-        const playableUrl = await resolveNzbToPlayableUrl(client, payload, directMode ? 9000 : 7000);
+        const playableUrl = await resolveNzbToPlayableUrl(client, payload, addTimeoutFor(candidate));
         if (isArchiveUrl(playableUrl)) {
           stats.skippedArchives++;
           sourceStats(candidate).skipped++;
