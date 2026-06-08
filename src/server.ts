@@ -275,6 +275,8 @@ function selectPlayableFile(files: any[], payload: ResolvePayload): any {
       return parsed.absoluteEpisode === requestedEpisode;
     });
     if (absolute) return absolute;
+
+    return undefined;
   }
 
   const explicitVideoFiles = playableFiles.filter(hasExplicitVideoFilename);
