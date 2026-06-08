@@ -203,6 +203,33 @@ function isVideoFile(file: any): boolean {
   return /\.(mkv|mp4|m4v|mov|avi|ts|m2ts|webm)$/i.test(fileTitle(file));
 }
 
+function hasExplicitVideoFilename(file: any): boolean {
+  return /\.(mkv|mp4|m4v|mov|avi|ts|m2ts|webm)$/i.test(String(file?.filename || file?.name || ""));
+}
+
+function hasVideoMimeType(file: any): boolean {
+  return /^video\//i.test(String(file?.type || file?.content_type || file?.mime || ""));
+}
+
+function hasStrongVideoEvidence(file: any): boolean {
+  return hasExplicitVideoFilename(file) || hasVideoMimeType(file);
+}
+
+function isAudioFile(file: any): boolean {
+  const title = fileTitle(file);
+  const type = String(file?.type || file?.content_type || file?.mime || "");
+  return /\.(mp3|m4a|flac|aac|ogg|opus|wav|wma|alac)$/i.test(title) || /^audio\//i.test(type);
+}
+
+function isEpisodeFile(file: any, payload: ResolvePayload): boolean {
+  const parsed = parseRelease(fileTitle(file));
+  if (!payload.episode) return true;
+  if (parsed.season === payload.season && parsed.episode === payload.episode) return true;
+  if (parsed.season === payload.season && parsed.episodeRange && parsed.episodeRange.start <= payload.episode && parsed.episodeRange.end >= payload.episode) return true;
+  if (parsed.absoluteEpisode === payload.episode) return true;
+  return false;
+}
+
 function isArchiveUrl(url: string): boolean {
   try {
     const pathname = decodeURIComponent(new URL(url).pathname);
@@ -213,16 +240,24 @@ function isArchiveUrl(url: string): boolean {
 }
 
 function selectPlayableFile(files: any[], payload: ResolvePayload): any {
-  const playableFiles = files.filter(isVideoFile);
-  if (playableFiles.length === 0) {
-    const downloadableFiles = files.filter(file => file?.download_url);
-    if (downloadableFiles.length === 0) return undefined;
-    return downloadableFiles.reduce((prev: any, current: any) => fileSize(prev) > fileSize(current) ? prev : current);
-  }
+  const playableFiles = files
+    .filter(file => file?.download_url)
+    .filter(file => isVideoFile(file))
+    .filter(file => hasStrongVideoEvidence(file))
+    .filter(file => !isAudioFile(file));
+  if (playableFiles.length === 0) return undefined;
+
   const requestedSeason = payload.season;
   const requestedEpisode = payload.episode;
 
   if (requestedEpisode) {
+    const explicitExact = playableFiles.find((file: any) => {
+      if (!hasExplicitVideoFilename(file)) return false;
+      const parsed = parseRelease(fileTitle(file));
+      return parsed.season === requestedSeason && parsed.episode === requestedEpisode;
+    });
+    if (explicitExact) return explicitExact;
+
     const exact = playableFiles.find((file: any) => {
       const parsed = parseRelease(fileTitle(file));
       return parsed.season === requestedSeason && parsed.episode === requestedEpisode;
@@ -242,7 +277,15 @@ function selectPlayableFile(files: any[], payload: ResolvePayload): any {
     if (absolute) return absolute;
   }
 
-  return playableFiles.reduce((prev: any, current: any) => fileSize(prev) > fileSize(current) ? prev : current);
+  const explicitVideoFiles = playableFiles.filter(hasExplicitVideoFilename);
+  if (explicitVideoFiles.length > 0) {
+    return explicitVideoFiles.reduce((prev: any, current: any) => fileSize(prev) > fileSize(current) ? prev : current);
+  }
+
+  const likelyEpisodeFiles = playableFiles.filter(file => isEpisodeFile(file, payload));
+  if (likelyEpisodeFiles.length === 1) return likelyEpisodeFiles[0];
+
+  return undefined;
 }
 
 async function resolveNzbToPlayableUrl(client: DeepbridClient, payload: ResolvePayload, addTimeoutMs = 25000): Promise<string> {
