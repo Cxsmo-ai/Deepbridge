@@ -1,7 +1,7 @@
 ﻿# Deepbridge
 
 <p align="center">
-  <strong>A polished Stremio addon for Deepbrid-powered streaming with official sources plus pre-resolved external Usenet indexer results.</strong>
+  <strong>A polished Stremio addon for Deepbrid-powered streaming with official sources, built-in Easynews support, and pre-resolved external Usenet indexer results.</strong>
 </p>
 
 <p align="center">
@@ -58,13 +58,15 @@ docker run --rm \
 
 ## What is Deepbridge?
 
-Deepbridge is a self-hosted Stremio addon that bridges Stremio, Deepbrid, and optional Newznab-compatible Usenet indexers. It combines Deepbrid official streams with external indexer NZBs resolved through Deepbrid, then presents clean, ranked Stremio stream cards.
+Deepbridge is a self-hosted Stremio addon that bridges Stremio, Deepbrid, built-in Easynews, and optional Newznab-compatible Usenet indexers. It combines Deepbrid official streams, native Easynews results, and external indexer NZBs resolved through Deepbrid, then presents clean, ranked Stremio stream cards.
 
 Deepbridge is built for people who want a simple addon URL, a clean configuration page, Docker-friendly deployment, and direct playback links from Deepbrid/myfast rather than proxying large video traffic through the addon server.
 
 ## Highlights
 
 - Deepbrid official stream support.
+- Built-in Easynews source configured directly in the Deepbridge dashboard.
+- Easynews direct fallback returns final Easynews CDN links when native Easynews resolution succeeds.
 - Optional external Usenet indexer support.
 - Direct external result mode: pre-adds/prechecks more indexer NZBs through Deepbrid before showing them.
 - External pregrab: indexer NZBs are submitted to Deepbrid before being shown as direct playback links.
@@ -76,7 +78,34 @@ Deepbridge is built for people who want a simple addon URL, a clean configuratio
 - Clean Stremio stream cards with source, readiness, size, and metadata.
 - Docker, Docker Compose, and local Node.js workflows.
 - Health endpoints for addon status, local resolve cache, and sanitized Deepbrid API/download-cache checks.
+- Sanitized Easynews direct stats in health output without exposing Easynews credentials or playback URLs.
 - GitHub-ready project structure with CI, support, security, and contribution templates.
+
+## Built-in Easynews support
+
+Deepbridge now includes Easynews as a built-in source. You do not need to install a separate Easynews Stremio addon, and you do not need to add Easynews as an external Newznab indexer unless you separately operate one for your own workflow.
+
+Configure Easynews from the Deepbridge dashboard:
+
+```text
+Built-in Easynews Source
+  Enable Easynews Direct
+  Easynews Username
+  Easynews Password
+  Max Easynews Direct Results
+```
+
+Easynews credentials are stored in the generated private Stremio configuration token, the same per-user model used by the dashboard for Deepbrid and external indexer credentials. There are no server-level Easynews environment variables required.
+
+Easynews behavior:
+
+- Deepbridge searches Easynews natively using an Easynews++/members-style search flow.
+- Easynews rows are filtered for video evidence, title/episode match, duration, size, password flags, and virus flags.
+- Matching Easynews results are resolved before being shown to Stremio.
+- Stremio receives ready streams, not unresolved Easynews addon links.
+- Stream cards are labeled `Easynews Direct` when playback uses Easynews directly.
+
+External Newznab/Prowlarr/AltHub-style indexers are still fully supported and remain Deepbrid-resolved sources. They are configured separately in the `External Indexers` dashboard section.
 
 ## External result modes
 
@@ -85,7 +114,7 @@ Deepbridge supports two external Newznab/AltHub result modes from the dashboard:
 - `Direct Deepbrid links` - recommended. Attempts more AltHub/Newznab candidates through Deepbrid and only shows streams after Deepbrid returns a direct playable URL.
 - `Strict prechecked` - faster/stricter. Attempts fewer candidates and only shows streams confirmed playable during the stream request.
 
-Both modes avoid exposing unresolved addon proxy links in Stremio results. External streams shown in Stremio are direct Deepbrid/myfast playback URLs.
+Both modes avoid exposing unresolved addon proxy links in Stremio results. External streams shown in Stremio are direct Deepbrid/myfast playback URLs. These modes apply to external indexers; the built-in Easynews source has its own dashboard credentials and direct Easynews resolution path.
 
 ## Health checks
 
@@ -195,7 +224,7 @@ See [docs/DOCKER.md](docs/DOCKER.md) for production notes.
 
 ## Dashboard
 
-Deepbridge includes a browser dashboard at the addon root URL. The dashboard generates private Stremio manifest links, manages Deepbrid/indexer configuration, and includes the project support panel with the Deepbrid referral guide.
+Deepbridge includes a browser dashboard at the addon root URL. The dashboard generates private Stremio manifest links, manages Deepbrid, built-in Easynews, and external indexer configuration, and includes the project support panel with the Deepbrid referral guide.
 
 See [docs/DASHBOARD.md](docs/DASHBOARD.md) for the full dashboard and support-panel documentation.
 ## Configuration
@@ -211,6 +240,8 @@ Core environment variables:
 | `DEEPBRID_API_KEY` | Optional if using per-user config | Fallback Deepbrid API key. |
 | `NODE_ENV` | No | Set to `production` in hosted deployments. |
 
+Deepbrid API keys, Easynews credentials, external indexers, and per-source limits can also be configured per user from the dashboard and encoded into the generated manifest URL.
+
 See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 ## Architecture
@@ -221,13 +252,14 @@ Stremio
   ▼
 Deepbridge addon
   ├─ Deepbrid official addon sources
-  ├─ External Newznab-compatible indexers
+  ├─ Built-in Easynews direct source
+  ├─ External Newznab-compatible indexers resolved through Deepbrid
   ├─ Release parsing/ranking/deduplication
   ├─ External pregrab via Deepbrid
-  └─ Direct final Deepbrid/myfast playback URLs
+  └─ Direct final Deepbrid/myfast or Easynews CDN playback URLs
 ```
 
-Deepbridge is intentionally not a video proxy. It prepares stream results and returns direct playback URLs so media bandwidth comes from Deepbrid servers, not your addon host.
+Deepbridge is intentionally not a video proxy. It prepares stream results and returns direct playback URLs so media bandwidth comes from Deepbrid or Easynews servers, not your addon host.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
@@ -279,6 +311,7 @@ Never paste API keys, Stremio config tokens, private domains, IP addresses, or S
 - Do not commit `.env` files.
 - Do not publish generated Stremio config tokens.
 - External indexer URLs and API keys should be treated as secrets.
+- Easynews usernames, passwords, generated config tokens, and final playback URLs should be treated as secrets.
 - Use HTTPS for public deployments.
 
 See [SECURITY.md](SECURITY.md).
@@ -297,6 +330,7 @@ Project layout:
 src/
   core/       Release parsing, scoring, media keys, shared types
   deepbrid/   Deepbrid API and official source adapter
+  easynews/   Built-in Easynews search, matching, and direct resolver
   indexer/    External indexer search
   stremio/    Manifest and Stremio stream formatting
   server.ts   Fastify HTTP server and routes
