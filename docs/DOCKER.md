@@ -4,7 +4,7 @@ Deepbridge is designed to run well in Docker.
 
 ## Published container images
 
-Images are published to Docker Hub on pushes to `main` and version tags:
+Images are published to Docker Hub on pushes to `main` and version tags. Published tags are multi-architecture images for `linux/amd64` and `linux/arm64`:
 
 ```bash
 docker pull pickymarker/deepbridge:latest
