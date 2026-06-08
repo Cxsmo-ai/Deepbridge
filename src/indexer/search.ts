@@ -12,6 +12,50 @@ function compact<T>(values: Array<T | undefined | null | false | "">): T[] {
   return values.filter(Boolean) as T[];
 }
 
+type IndexerSearchStats = {
+  startedAt: string;
+  finishedAt: string;
+  mediaKey: string;
+  configuredIndexers: number;
+  totalCandidates: number;
+  indexers: Array<{
+    name: string;
+    host: string;
+    type: string;
+    plannedSearches: number;
+    fulfilledSearches: number;
+    failedSearches: number;
+    rawItems: number;
+    dedupedItems: number;
+    selectedItems: number;
+    candidates: number;
+    skippedArchives: number;
+    byResolution: Record<string, number>;
+    error?: string;
+  }>;
+};
+
+let lastIndexerSearchStats: IndexerSearchStats = {
+  startedAt: "",
+  finishedAt: "",
+  mediaKey: "",
+  configuredIndexers: 0,
+  totalCandidates: 0,
+  indexers: []
+};
+
+export function getLastIndexerSearchStats(): IndexerSearchStats {
+  return lastIndexerSearchStats;
+}
+
+function safeHost(rawUrl: string): string {
+  try {
+    return new URL(rawUrl).host;
+  } catch {
+    return "invalid-url";
+  }
+}
+
 async function fetchMediaMetadata(media: MediaRequest): Promise<MediaMetadata> {
   if (media.imdbId.startsWith("tt")) {
     try {
@@ -328,6 +372,7 @@ export async function getIndexerSources(
   media: MediaRequest,
   userConfig?: any
 ): Promise<SourceCandidate[]> {
+  const startedAt = Date.now();
   let indexers: any[] = [];
   
   if (userConfig) {
@@ -337,7 +382,7 @@ export async function getIndexerSources(
         base_url: idx.url,
         encrypted_api_key: idx.key,
         limits: idx.limits,
-        type: "althub"
+        type: idx.type || "althub"
       }));
     }
     
@@ -351,22 +396,64 @@ export async function getIndexerSources(
       }];
     }
   }
+
+  const stats: IndexerSearchStats = {
+    startedAt: new Date(startedAt).toISOString(),
+    finishedAt: "",
+    mediaKey: makeMediaKey(media),
+    configuredIndexers: indexers.length,
+    totalCandidates: 0,
+    indexers: []
+  };
   
-  if (indexers.length === 0) return [];
+  if (indexers.length === 0) {
+    stats.finishedAt = new Date().toISOString();
+    lastIndexerSearchStats = stats;
+    return [];
+  }
 
   const candidates: SourceCandidate[] = [];
   const metadata = await fetchMediaMetadata(media);
 
   const indexerPromises = indexers.map(async (indexer) => {
+    const indexerStats = {
+      name: String(indexer.name || "Unnamed Indexer"),
+      host: safeHost(String(indexer.base_url || "")),
+      type: String(indexer.type || "newznab"),
+      plannedSearches: 0,
+      fulfilledSearches: 0,
+      failedSearches: 0,
+      rawItems: 0,
+      dedupedItems: 0,
+      selectedItems: 0,
+      candidates: 0,
+      skippedArchives: 0,
+      byResolution: {
+        "2160p": 0,
+        "1080p": 0,
+        "720p": 0,
+        "SD": 0
+      } as Record<string, number>,
+      error: undefined as string | undefined
+    };
+    stats.indexers.push(indexerStats);
+
     try {
       const rawItems: any[] = [];
       const seenItems = new Set<string>();
-      const searchResults = await Promise.allSettled(buildSearchUrls(indexer, media, metadata).map(async (searchUrl) => {
+      const searchUrls = buildSearchUrls(indexer, media, metadata);
+      indexerStats.plannedSearches = searchUrls.length;
+      const searchResults = await Promise.allSettled(searchUrls.map(async (searchUrl) => {
         return fetchNewznabItems(searchUrl);
       }));
 
       for (const result of searchResults) {
-        if (result.status !== "fulfilled") continue;
+        if (result.status !== "fulfilled") {
+          indexerStats.failedSearches++;
+          continue;
+        }
+        indexerStats.fulfilledSearches++;
+        indexerStats.rawItems += result.value.length;
         for (const item of result.value) {
           const attrs = attrMap(item);
           const nzbUrl = getNzbUrl(item, attrs);
@@ -377,6 +464,7 @@ export async function getIndexerSources(
           }
         }
       }
+      indexerStats.dedupedItems = rawItems.length;
       
       // Group items by resolution to ensure we get a mix of 4K, 1080p, 720p, etc.
       const resolutionGroups: { [key: string]: any[] } = {
@@ -388,37 +476,45 @@ export async function getIndexerSources(
 
       for (const item of rawItems) {
         const title = item.title || "";
-        if (isArchiveRelease(title)) continue;
+        if (isArchiveRelease(title)) {
+          indexerStats.skippedArchives++;
+          continue;
+        }
         const lowerTitle = title.toLowerCase();
         
-        // Skip obvious foreign dubs if you want, but for now just group by res
         if (lowerTitle.includes("2160p") || lowerTitle.includes("4k")) {
           resolutionGroups["2160p"].push(item);
+          indexerStats.byResolution["2160p"]++;
         } else if (lowerTitle.includes("1080p")) {
           resolutionGroups["1080p"].push(item);
+          indexerStats.byResolution["1080p"]++;
         } else if (lowerTitle.includes("720p")) {
           resolutionGroups["720p"].push(item);
+          indexerStats.byResolution["720p"]++;
         } else {
           resolutionGroups["SD"].push(item);
+          indexerStats.byResolution["SD"]++;
         }
       }
 
-      // Pick top results based on user limits for THIS specific indexer
+      // Pick top results based on user limits for THIS specific indexer.
+      // Defaults are intentionally higher now so health/streams can show more working sources.
       let topItems: any[] = [];
       for (const res of ["2160p", "1080p", "720p", "SD"]) {
         const group = resolutionGroups[res];
-        let limit: number | "all" = 15; // default 15
+        let limit: number | "all" = 30;
         
         if (indexer.limits && indexer.limits[res as keyof typeof indexer.limits] !== undefined) {
-            limit = indexer.limits[res as keyof typeof indexer.limits];
+          limit = indexer.limits[res as keyof typeof indexer.limits];
         }
 
         if (limit === "all") {
-            topItems = topItems.concat(group);
+          topItems = topItems.concat(group);
         } else {
-            topItems = topItems.concat(group.slice(0, Number(limit)));
+          topItems = topItems.concat(group.slice(0, Number(limit)));
         }
       }
+      indexerStats.selectedItems = topItems.length;
 
       for (const item of topItems) {
         const attrs = attrMap(item);
@@ -435,7 +531,7 @@ export async function getIndexerSources(
         const match = scoreReleaseMatch(title, media, parsed, metadata);
         const sizeBytes = getItemSize(item, attrs, parsed.sizeBytes);
 
-        candidates.push({
+        const candidate: SourceCandidate = {
           id: nanoid(),
           mediaType: media.type,
           imdbId: media.imdbId,
@@ -464,17 +560,23 @@ export async function getIndexerSources(
           matchReason: match.reason,
           score: 1000 + match.score + (sizeBytes / (1024 * 1024 * 1024)),
           createdAt: new Date().toISOString()
-        });
+        };
+        candidates.push(candidate);
+        indexerStats.candidates++;
       }
 
     } catch (err) {
+      indexerStats.error = err instanceof Error ? err.message : "indexer_search_failed";
       console.error(`Error querying indexer ${indexer.name}:`, err);
     }
   });
 
-  // Global 5-second timeout across ALL indexers concurrently
-  const timeoutPromise = new Promise(resolve => setTimeout(resolve, 5000));
+  // Give broad Newznab fan-out enough time to return useful candidates.
+  const timeoutPromise = new Promise(resolve => setTimeout(resolve, 12000));
   await Promise.race([Promise.allSettled(indexerPromises), timeoutPromise]);
 
+  stats.finishedAt = new Date().toISOString();
+  stats.totalCandidates = candidates.length;
+  lastIndexerSearchStats = stats;
   return candidates.sort((a, b) => b.score - a.score);
 }

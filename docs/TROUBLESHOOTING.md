@@ -17,7 +17,7 @@ Health endpoints:
 /<configuration-token>/health
 ```
 
-These endpoints report addon status, local resolve cache/in-flight counts, last Deepbrid add/precheck stats, and sanitized Deepbrid API/download-cache health. They do not return API keys, indexer keys, playback URLs, or NZB URLs.
+These endpoints report addon status, local resolve cache/in-flight counts, last Deepbrid add/precheck stats, sanitized per-indexer search stats, and sanitized Deepbrid API/download-cache health. They do not return API keys, indexer keys, playback URLs, or NZB URLs.
 
 ## Stremio does not show streams
 
@@ -37,7 +37,7 @@ Try:
 - Restart Stremio to clear stale stream entries.
 - Use `Direct Deepbrid links` external result mode if you want Deepbridge to attempt more AltHub/Newznab candidates before showing results.
 - Check whether external entries say `Prechecked`.
-- Check `/<configuration-token>/health` for Deepbrid and cache status.
+- Check `/<configuration-token>/health` after loading a stream. `cache.indexerSearch` should show raw/deduped/candidate counts per AltHub/Newznab host, and `cache.deepbridAdd.bySource` should show attempted and ready counts for working Deepbrid sources.
 - Check sanitized server logs.
 
 ## Playback is slow to start

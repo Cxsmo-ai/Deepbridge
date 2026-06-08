@@ -9,7 +9,7 @@ import { manifest } from "./stremio/manifest";
 import { DeepbridClient, MediaRequest } from "./deepbrid/apiClient";
 import { getOfficialDeepbridSources } from "./deepbrid/officialAddon";
 import { formatStreams } from "./stremio/formatStreams";
-import { getIndexerSources } from "./indexer/search";
+import { getIndexerSources, getLastIndexerSearchStats } from "./indexer/search";
 import { decodeConfig } from "./core/configDecoder";
 import { dedupeCandidates } from "./core/releaseMatch";
 import { parseRelease } from "./core/parseRelease";
@@ -81,7 +81,8 @@ let lastPregrabStats = {
   deadlineMs: 0,
   maxAttempts: 0,
   maxReady: 0,
-  concurrency: 0
+  concurrency: 0,
+  bySource: {} as Record<string, { attempted: number; ready: number; failed: number; skipped: number }>
 };
 // Final Deepbrid/myfast playback URLs can be short-lived or single-use.
 // Keep only in-flight de-duping, not long-lived cached redirects.
@@ -94,7 +95,8 @@ function cacheHealth() {
       inflight: resolveInflight.size,
       ttlMs: resolveTtlMs
     },
-    deepbridAdd: lastPregrabStats
+    deepbridAdd: lastPregrabStats,
+    indexerSearch: getLastIndexerSearchStats()
   };
 }
 
@@ -287,15 +289,15 @@ function candidateToResolvePayload(candidate: SourceCandidate): ResolvePayload |
 async function pregrabExternalCandidates(client: DeepbridClient, candidates: SourceCandidate[], mode: "direct" | "prechecked" = "direct"): Promise<SourceCandidate[]> {
   const startedAt = Date.now();
   const directMode = mode === "direct";
-  const deadlineMs = directMode ? 22000 : 15000;
-  const maxAttempts = directMode ? 48 : 24;
-  const maxReady = directMode ? 24 : 12;
+  const deadlineMs = directMode ? 35000 : 22000;
+  const maxAttempts = directMode ? 96 : 48;
+  const maxReady = directMode ? 48 : 24;
   const externalCandidates = candidates
     .filter(candidate => candidate.origin !== "deepbrid-official")
     .sort((a, b) => b.score - a.score)
     .slice(0, maxAttempts);
   const readyCandidates: SourceCandidate[] = [];
-  const concurrency = directMode ? 4 : 3;
+  const concurrency = directMode ? 6 : 4;
   const stats = {
     mode,
     startedAt: new Date(startedAt).toISOString(),
@@ -309,9 +311,21 @@ async function pregrabExternalCandidates(client: DeepbridClient, candidates: Sou
     deadlineMs,
     maxAttempts,
     maxReady,
-    concurrency
+    concurrency,
+    bySource: {} as Record<string, { attempted: number; ready: number; failed: number; skipped: number }>
   };
   let index = 0;
+
+  function sourceKey(candidate: SourceCandidate): string {
+    const displayMatch = candidate.displayName.match(/^\[([^\]]+)\]/);
+    return displayMatch?.[1] || candidate.origin;
+  }
+
+  function sourceStats(candidate: SourceCandidate) {
+    const key = sourceKey(candidate);
+    stats.bySource[key] ||= { attempted: 0, ready: 0, failed: 0, skipped: 0 };
+    return stats.bySource[key];
+  }
 
   async function worker() {
     while (index < externalCandidates.length && readyCandidates.length < maxReady && Date.now() - startedAt < deadlineMs) {
@@ -319,14 +333,17 @@ async function pregrabExternalCandidates(client: DeepbridClient, candidates: Sou
       const payload = candidateToResolvePayload(candidate);
       if (!payload) {
         stats.skipped++;
+        sourceStats(candidate).skipped++;
         continue;
       }
 
       try {
         stats.attempted++;
+        sourceStats(candidate).attempted++;
         const playableUrl = await resolveNzbToPlayableUrl(client, payload, directMode ? 9000 : 7000);
         if (isArchiveUrl(playableUrl)) {
           stats.skippedArchives++;
+          sourceStats(candidate).skipped++;
           continue;
         }
 
@@ -337,8 +354,10 @@ async function pregrabExternalCandidates(client: DeepbridClient, candidates: Sou
           score: candidate.score + 5000
         });
         stats.ready++;
+        sourceStats(candidate).ready++;
       } catch {
         stats.failed++;
+        sourceStats(candidate).failed++;
         // Invalid or unresolved indexer results are intentionally hidden.
       }
     }

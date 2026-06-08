@@ -40,9 +40,9 @@ Resolution-specific limits can control how many results appear for 2160p, 1080p,
 
 ## Health and cache checks
 
-Use `/health` to check addon status, local resolve cache/in-flight counts, last Deepbrid add/precheck stats, and fallback Deepbrid API status.
+Use `/health` to check addon status, local resolve cache/in-flight counts, last Deepbrid add/precheck stats, sanitized per-indexer search stats, and fallback Deepbrid API status.
 
-Use `/<configuration-token>/health` to check the same diagnostics for a generated dashboard configuration without exposing API keys or raw cached URLs.
+Use `/<configuration-token>/health` to check the same diagnostics for a generated dashboard configuration without exposing API keys, indexer keys, raw NZB URLs, or final playback URLs. After a stream request, `cache.indexerSearch` shows planned searches, raw/deduped/selected item counts, candidate counts, archive skips, and resolution breakdowns per indexer host. `cache.deepbridAdd.bySource` shows how many candidates were attempted, became ready, failed, or were skipped per source.
 
 ## Security note
 
