@@ -195,9 +195,12 @@ function fileSize(file: any): number {
   return Number.isFinite(size) ? size : 0;
 }
 
+function fileTitle(file: any): string {
+  return String(file.filename || file.name || file.subject || "");
+}
+
 function isVideoFile(file: any): boolean {
-  const filename = String(file.filename || file.name || "");
-  return /\.(mkv|mp4|m4v|mov|avi|ts|m2ts|webm)$/i.test(filename);
+  return /\.(mkv|mp4|m4v|mov|avi|ts|m2ts|webm)$/i.test(fileTitle(file));
 }
 
 function isArchiveUrl(url: string): boolean {
@@ -211,25 +214,29 @@ function isArchiveUrl(url: string): boolean {
 
 function selectPlayableFile(files: any[], payload: ResolvePayload): any {
   const playableFiles = files.filter(isVideoFile);
-  if (playableFiles.length === 0) return undefined;
+  if (playableFiles.length === 0) {
+    const downloadableFiles = files.filter(file => file?.download_url);
+    if (downloadableFiles.length === 0) return undefined;
+    return downloadableFiles.reduce((prev: any, current: any) => fileSize(prev) > fileSize(current) ? prev : current);
+  }
   const requestedSeason = payload.season;
   const requestedEpisode = payload.episode;
 
   if (requestedEpisode) {
     const exact = playableFiles.find((file: any) => {
-      const parsed = parseRelease(String(file.filename || file.name || ""));
+      const parsed = parseRelease(fileTitle(file));
       return parsed.season === requestedSeason && parsed.episode === requestedEpisode;
     });
     if (exact) return exact;
 
     const range = playableFiles.find((file: any) => {
-      const parsed = parseRelease(String(file.filename || file.name || ""));
+      const parsed = parseRelease(fileTitle(file));
       return parsed.season === requestedSeason && parsed.episodeRange && parsed.episodeRange.start <= requestedEpisode && parsed.episodeRange.end >= requestedEpisode;
     });
     if (range) return range;
 
     const absolute = playableFiles.find((file: any) => {
-      const parsed = parseRelease(String(file.filename || file.name || ""));
+      const parsed = parseRelease(fileTitle(file));
       return parsed.absoluteEpisode === requestedEpisode;
     });
     if (absolute) return absolute;
