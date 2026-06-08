@@ -24,6 +24,7 @@ function encodeResolvePayload(candidate: SourceCandidate): string {
 
 function sourceLabel(candidate: SourceCandidate): string {
   if (candidate.origin === "deepbrid-official") return "Deepbrid Official";
+  if (candidate.origin === "easynews-direct") return "Easynews Direct";
   const displayMatch = candidate.displayName.match(/^\[([^\]]+)\]/);
   if (displayMatch) return displayMatch[1];
   return candidate.origin
@@ -61,7 +62,13 @@ export function formatStreams(candidates: SourceCandidate[], baseUrl: string, to
 
     let thirdLine = `📥 ${originStr}`;
     if (candidate.status === "ready") {
-      thirdLine += candidate.origin === "deepbrid-official" ? " ⚡ Ready" : " ✅ Prechecked";
+      if (candidate.origin === "deepbrid-official") {
+        thirdLine += " ⚡ Ready";
+      } else if (candidate.origin === "easynews-direct") {
+        thirdLine += " ✅ Direct CDN";
+      } else {
+        thirdLine += " ✅ Deepbrid";
+      }
     } else {
       thirdLine += " ⚡ (Instant Resolve)";
     }

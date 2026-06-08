@@ -13,6 +13,7 @@ export type SourceCandidate = {
     | "prowlarr"
     | "nzbhydra"
     | "althub"
+    | "easynews-direct"
     | "manual-nzb";
 
   title: string;
@@ -31,6 +32,7 @@ export type SourceCandidate = {
   nzbUrl?: string;
   nzbFileId?: string;
   originalIndexerUrl?: string;
+  sourceService?: "deepbrid" | "easynews";
 
   resolution?: "2160p" | "1080p" | "720p" | "480p" | "unknown";
   quality?: "REMUX" | "BluRay" | "WEB-DL" | "WEBRip" | "HDTV" | "unknown";

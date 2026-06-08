@@ -10,6 +10,7 @@ import { DeepbridClient, MediaRequest } from "./deepbrid/apiClient";
 import { getOfficialDeepbridSources } from "./deepbrid/officialAddon";
 import { formatStreams } from "./stremio/formatStreams";
 import { getIndexerSources, getLastIndexerSearchStats } from "./indexer/search";
+import { getEasynewsDirectSources, getLastEasynewsDirectStats } from "./easynews/direct";
 import { decodeConfig } from "./core/configDecoder";
 import { dedupeCandidates } from "./core/releaseMatch";
 import { parseRelease } from "./core/parseRelease";
@@ -96,7 +97,8 @@ function cacheHealth() {
       ttlMs: resolveTtlMs
     },
     deepbridAdd: lastPregrabStats,
-    indexerSearch: getLastIndexerSearchStats()
+    indexerSearch: getLastIndexerSearchStats(),
+    easynewsDirect: getLastEasynewsDirectStats()
   };
 }
 
@@ -488,12 +490,14 @@ async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, 
     }
     const client = new DeepbridClient(apiKey);
 
-    const [officialResult, indexerResult] = await Promise.allSettled([
+    const [officialResult, indexerResult, easynewsResult] = await Promise.allSettled([
       getOfficialDeepbridSources(client, media, userConfig),
-      getIndexerSources(client, media, userConfig)
+      getIndexerSources(client, media, userConfig),
+      getEasynewsDirectSources(media, userConfig)
     ]);
     const officialCandidates = officialResult.status === "fulfilled" ? officialResult.value : [];
     const indexerCandidates = indexerResult.status === "fulfilled" ? indexerResult.value : [];
+    const easynewsDirectCandidates = easynewsResult.status === "fulfilled" ? easynewsResult.value : [];
     const externalMode = userConfig?.externalResultMode === "prechecked" ? "prechecked" : "direct";
     const readyIndexerCandidates = await pregrabExternalCandidates(client, indexerCandidates, externalMode);
     const externalCandidates = externalMode === "direct"
@@ -503,7 +507,7 @@ async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, 
         ]
       : readyIndexerCandidates;
     
-    const candidates = dedupeCandidates([...officialCandidates, ...externalCandidates]);
+    const candidates = dedupeCandidates([...officialCandidates, ...externalCandidates, ...easynewsDirectCandidates]);
     const streams = formatStreams(candidates, dynamicBaseUrl, token);
     
     // Fallback if empty
@@ -590,7 +594,9 @@ app.get("/:token/health", async (request) => {
     config: {
       hasTokenConfig: Boolean(userConfig),
       externalResultMode: userConfig?.externalResultMode || "direct",
-      indexers: Array.isArray(userConfig?.indexers) ? userConfig.indexers.length : 0
+      indexers: Array.isArray(userConfig?.indexers) ? userConfig.indexers.length : 0,
+      easynewsDirectConfigured: Boolean(userConfig?.easynewsUsername && userConfig?.easynewsPassword),
+      easynewsDirectEnabled: Boolean(userConfig?.easynewsEnabled !== false && userConfig?.easynewsUsername && userConfig?.easynewsPassword)
     }
   };
 });

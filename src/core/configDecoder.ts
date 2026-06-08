@@ -13,6 +13,10 @@ export interface IndexerConfig {
 export interface UserConfig {
   deepbridApiKey: string;
   externalResultMode?: "direct" | "prechecked";
+  easynewsEnabled?: boolean;
+  easynewsUsername?: string;
+  easynewsPassword?: string;
+  easynewsMaxResults?: number;
   // Legacy
   indexerUrl?: string;
   indexerApiKey?: string;

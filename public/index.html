@@ -364,6 +364,30 @@
     </div>
 
     <div style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; margin-bottom: 30px;">
+      <label style="font-size: 0.95rem; color: var(--text); margin-bottom: 10px; display: block;">Built-in Easynews Source</label>
+      <div class="form-group" style="margin-bottom: 15px;">
+        <label>Enable Easynews Direct</label>
+        <select id="easynewsEnabled">
+          <option value="true" selected>Enabled when credentials are provided</option>
+          <option value="false">Disabled</option>
+        </select>
+        <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 5px;">Easynews runs inside this same Deepbridge addon. External indexers below remain fully supported and still resolve through Deepbrid.</p>
+      </div>
+      <div class="form-group" style="margin-bottom: 15px;">
+        <label>Easynews Username</label>
+        <input type="text" id="easynewsUsername" placeholder="Optional Easynews username">
+      </div>
+      <div class="form-group" style="margin-bottom: 15px;">
+        <label>Easynews Password</label>
+        <input type="password" id="easynewsPassword" placeholder="Optional Easynews password">
+      </div>
+      <div class="form-group" style="margin-bottom: 0;">
+        <label>Max Easynews Direct Results</label>
+        <input type="text" id="easynewsMaxResults" value="4" placeholder="1-8" style="padding: 8px; font-size: 0.9rem;">
+      </div>
+    </div>
+
+    <div style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; margin-bottom: 30px;">
       <label style="font-size: 0.95rem; color: var(--text); margin-bottom: 10px; display: block;">Official Deepbrid Resolution Limits</label>
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
         <div class="form-group" style="margin-bottom: 0;">
@@ -386,9 +410,9 @@
     </div>
 
     <div style="margin-top: 30px; margin-bottom: 10px; border-bottom: 1px solid var(--panel-border); padding-bottom: 10px;">
-      <label style="font-size: 1.1rem; color: var(--text);">Indexers</label>
+      <label style="font-size: 1.1rem; color: var(--text);">External Indexers</label>
     </div>
-    <p class="indexer-help">Choose a preset to auto-fill the API base URL, then paste your API key from that provider. Custom Newznab-compatible indexers and Prowlarr are still supported.</p>
+    <p class="indexer-help">Optional. Add Newznab-compatible indexers if you want extra Deepbrid-resolved sources. Easynews is built into Deepbridge above and does not need to be added here.</p>
 
     <div id="indexerContainer" class="indexer-list">
       <!-- Indexers will be dynamically added here -->
@@ -396,12 +420,12 @@
 
     <button type="button" class="add-btn" onclick="addIndexer()">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-      Add Another Indexer
+      Add External Indexer
     </button>
 
     <button type="button" class="primary-btn" onclick="generate()">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-      Generate Install Link
+      Generate Deepbridge Install Link
     </button>
 
     <div id="result">
@@ -483,7 +507,7 @@
       <div class="indexer-item" id="${id}">
         <div class="indexer-header">
           <div class="indexer-title">Indexer #${indexerCount}</div>
-          ${indexerCount > 1 ? `<button type="button" class="remove-btn" onclick="removeIndexer('${id}')">Remove</button>` : ''}
+          <button type="button" class="remove-btn" onclick="removeIndexer('${id}')">Remove</button>
         </div>
         <div class="preset-row">
           <div class="form-group" style="margin-bottom: 0;">
@@ -606,14 +630,14 @@
       });
     }
 
-    if (indexers.length === 0) {
-      alert("You must add at least one indexer.");
-      return;
-    }
 
     const configObj = {
       deepbridApiKey: deepbridKey,
       externalResultMode: document.getElementById('externalResultMode').value,
+      easynewsEnabled: document.getElementById('easynewsEnabled').value === 'true',
+      easynewsUsername: document.getElementById('easynewsUsername').value.trim(),
+      easynewsPassword: document.getElementById('easynewsPassword').value,
+      easynewsMaxResults: Math.min(Math.max(parseInt(document.getElementById('easynewsMaxResults').value, 10) || 4, 1), 8),
       indexers: indexers,
       limits: {
         "2160p": getLimitVal(document.getElementById('dbLimit2160p').value),
@@ -649,9 +673,7 @@
     });
   }
 
-  window.onload = () => {
-    addIndexer('', 'https://api.althub.co.za', '');
-  };
+  window.onload = () => {};
 </script>
 
 </body>
