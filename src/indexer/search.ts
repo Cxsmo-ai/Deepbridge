@@ -31,6 +31,7 @@ type IndexerSearchStats = {
     candidates: number;
     skippedArchives: number;
     byResolution: Record<string, number>;
+    errors?: Record<string, number>;
     error?: string;
   }>;
 };
@@ -54,6 +55,12 @@ function safeHost(rawUrl: string): string {
   } catch {
     return "invalid-url";
   }
+}
+
+function isEasynewsIndexer(indexer: any): boolean {
+  const name = String(indexer?.name || "").toLowerCase();
+  const url = String(indexer?.base_url || indexer?.url || "").toLowerCase();
+  return name.includes("easynews") || url.includes("easynews");
 }
 
 async function fetchMediaMetadata(media: MediaRequest): Promise<MediaMetadata> {
@@ -174,12 +181,13 @@ function buildNewznabUrl(baseUrl: string, params: Record<string, string | number
 
 function buildSearchUrls(indexer: any, media: MediaRequest, metadata: MediaMetadata): string[] {
   const urls: string[] = [];
+  const easynewsMode = isEasynewsIndexer(indexer);
   const imdb = media.imdbId.startsWith("tt") ? media.imdbId.replace("tt", "") : "";
-  const titles = buildQueryTitles(metadata);
+  const titles = buildQueryTitles(metadata).slice(0, easynewsMode ? 2 : 8);
   const baseUrl = String(indexer.base_url || "").replace(/\/+$/, "");
   const apikey = indexer.encrypted_api_key;
-  const limit = 100;
-  const offsets = [0, 100];
+  const limit = easynewsMode ? 50 : 100;
+  const offsets = easynewsMode ? [0] : [0, 100];
   const seasonEpisode = media.type === "series" && media.season && media.episode
     ? `S${String(media.season).padStart(2, "0")}E${String(media.episode).padStart(2, "0")}`
     : "";
@@ -187,8 +195,28 @@ function buildSearchUrls(indexer: any, media: MediaRequest, metadata: MediaMetad
     ? `S${String(media.season).padStart(2, "0")}`
     : "";
 
+  if (easynewsMode) {
+    const primaryTitle = titles[0];
+    if (!primaryTitle) return [];
+    if (media.type === "movie") {
+      urls.push(buildNewznabUrl(baseUrl, { t: "movie", apikey, q: primaryTitle, year: metadata.year, limit, offset: 0 }));
+      urls.push(buildNewznabUrl(baseUrl, { t: "search", apikey, q: metadata.year ? `${primaryTitle} ${metadata.year}` : primaryTitle, cat: 2000, limit, offset: 0 }));
+    } else {
+      if (seasonEpisode) {
+        urls.push(buildNewznabUrl(baseUrl, { t: "tvsearch", apikey, q: primaryTitle, season: media.season, ep: media.episode, limit, offset: 0 }));
+        urls.push(buildNewznabUrl(baseUrl, { t: "search", apikey, q: `${primaryTitle} ${seasonEpisode}`, cat: 5000, limit, offset: 0 }));
+      } else if (seasonOnly) {
+        urls.push(buildNewznabUrl(baseUrl, { t: "tvsearch", apikey, q: primaryTitle, season: media.season, limit, offset: 0 }));
+        urls.push(buildNewznabUrl(baseUrl, { t: "search", apikey, q: `${primaryTitle} ${seasonOnly}`, cat: 5000, limit, offset: 0 }));
+      } else {
+        urls.push(buildNewznabUrl(baseUrl, { t: "search", apikey, q: primaryTitle, cat: 5000, limit, offset: 0 }));
+      }
+    }
+    return [...new Set(urls)];
+  }
+
   if (media.type === "movie") {
-    if (imdb) {
+    if (imdb && !easynewsMode) {
       urls.push(buildNewznabUrl(baseUrl, { t: "movie", apikey, imdbid: imdb, limit, offset: 0 }));
       urls.push(buildNewznabUrl(baseUrl, { t: "search", apikey, imdbid: imdb, cat: 2000, limit, offset: 0 }));
     }
@@ -196,10 +224,10 @@ function buildSearchUrls(indexer: any, media: MediaRequest, metadata: MediaMetad
       for (const offset of offsets) {
         urls.push(buildNewznabUrl(baseUrl, { t: "search", apikey, q: title, cat: 2000, limit, offset }));
       }
-      urls.push(buildNewznabUrl(baseUrl, { t: "movie", apikey, q: title, limit, offset: 0 }));
+      urls.push(buildNewznabUrl(baseUrl, { t: "movie", apikey, q: title, year: metadata.year, limit, offset: 0 }));
     }
   } else {
-    if (imdb) {
+    if (imdb && !easynewsMode) {
       urls.push(buildNewznabUrl(baseUrl, { t: "tvsearch", apikey, imdbid: imdb, season: media.season, ep: media.episode, limit, offset: 0 }));
       urls.push(buildNewznabUrl(baseUrl, { t: "tvsearch", apikey, imdbid: imdb, season: media.season, limit, offset: 0 }));
       urls.push(buildNewznabUrl(baseUrl, { t: "search", apikey, imdbid: imdb, cat: 5000, limit, offset: 0 }));
@@ -218,7 +246,7 @@ function buildSearchUrls(indexer: any, media: MediaRequest, metadata: MediaMetad
     }
   }
 
-  return [...new Set(urls)].slice(0, 32);
+  return [...new Set(urls)].slice(0, easynewsMode ? 6 : 32);
 }
 
 function asArray(items: any): any[] {
@@ -275,10 +303,10 @@ function parseXmlItems(xml: string): any[] {
   return items;
 }
 
-async function fetchNewznabItems(searchUrl: string): Promise<any[]> {
+async function fetchNewznabItems(searchUrl: string, timeoutMs = 5000): Promise<any[]> {
   const res = await request(searchUrl, {
     headers: { "Accept": "application/json, application/xml, text/xml;q=0.9, */*;q=0.8" },
-    signal: AbortSignal.timeout(5000)
+    signal: AbortSignal.timeout(timeoutMs)
   });
   const body = await res.body.text();
   try {
@@ -287,6 +315,14 @@ async function fetchNewznabItems(searchUrl: string): Promise<any[]> {
   } catch {
     return parseXmlItems(body);
   }
+}
+
+function newznabErrorCategory(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error || "unknown");
+  if (/timeout|aborted|AbortError|UND_ERR_ABORTED/i.test(message)) return "timeout";
+  if (/statusCode|HTTP|401|403/i.test(message)) return "http";
+  if (/ENOTFOUND|ECONNREFUSED|ECONNRESET|EAI_AGAIN/i.test(message)) return "network";
+  return "other";
 }
 
 function resolveFirst(...values: any[]): any {
@@ -440,6 +476,7 @@ export async function getIndexerSources(
         "720p": 0,
         "SD": 0
       } as Record<string, number>,
+      errors: {} as Record<string, number>,
       error: undefined as string | undefined
     };
     stats.indexers.push(indexerStats);
@@ -448,14 +485,29 @@ export async function getIndexerSources(
       const rawItems: any[] = [];
       const seenItems = new Set<string>();
       const searchUrls = buildSearchUrls(indexer, media, metadata);
+      const easynewsMode = isEasynewsIndexer(indexer);
+      const searchTimeoutMs = easynewsMode ? 45000 : 12000;
       indexerStats.plannedSearches = searchUrls.length;
-      const searchResults = await Promise.allSettled(searchUrls.map(async (searchUrl) => {
-        return fetchNewznabItems(searchUrl);
-      }));
+      const searchResults: PromiseSettledResult<any[]>[] = [];
+      if (easynewsMode) {
+        for (const searchUrl of searchUrls) {
+          try {
+            searchResults.push({ status: "fulfilled", value: await fetchNewznabItems(searchUrl, searchTimeoutMs) });
+          } catch (error) {
+            searchResults.push({ status: "rejected", reason: error });
+          }
+        }
+      } else {
+        searchResults.push(...await Promise.allSettled(searchUrls.map(async (searchUrl) => {
+          return fetchNewznabItems(searchUrl, searchTimeoutMs);
+        })));
+      }
 
       for (const result of searchResults) {
         if (result.status !== "fulfilled") {
           indexerStats.failedSearches++;
+          const category = newznabErrorCategory(result.reason);
+          indexerStats.errors[category] = (indexerStats.errors[category] || 0) + 1;
           continue;
         }
         indexerStats.fulfilledSearches++;
