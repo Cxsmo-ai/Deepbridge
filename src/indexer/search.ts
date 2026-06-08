@@ -6,6 +6,12 @@ import { MediaMetadata, normalizeComparableTitle, scoreReleaseMatch } from "../c
 import { nanoid } from "nanoid";
 import { request } from "undici";
 
+const NEWZNAB_ATTRS = "files,usenetdate,group,language,resolution,season,episode,imdb,grabs,password,size";
+
+function compact<T>(values: Array<T | undefined | null | false | "">): T[] {
+  return values.filter(Boolean) as T[];
+}
+
 async function fetchMediaMetadata(media: MediaRequest): Promise<MediaMetadata> {
   if (media.imdbId.startsWith("tt")) {
     try {
@@ -91,7 +97,9 @@ function buildQueryTitles(metadata: MediaMetadata): string[] {
   const out: string[] = [];
   for (const title of titles) {
     const normalized = normalizeComparableTitle(title);
-    for (const value of [title, normalized]) {
+    const dotted = normalized.replace(/\s+/g, ".");
+    const spaced = title.replace(/[._-]+/g, " ");
+    for (const value of [title, normalized, dotted, spaced]) {
       const key = normalizeComparableTitle(value);
       if (key && !seen.has(key)) {
         seen.add(key);
@@ -99,7 +107,19 @@ function buildQueryTitles(metadata: MediaMetadata): string[] {
       }
     }
   }
-  return out.slice(0, 4);
+  return out.slice(0, 8);
+}
+
+function buildNewznabUrl(baseUrl: string, params: Record<string, string | number | undefined>): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === "") continue;
+    search.set(key, String(value));
+  }
+  search.set("extended", "1");
+  search.set("attrs", NEWZNAB_ATTRS);
+  search.set("o", "json");
+  return `${baseUrl}/api?${search.toString()}`;
 }
 
 function buildSearchUrls(indexer: any, media: MediaRequest, metadata: MediaMetadata): string[] {
@@ -107,31 +127,48 @@ function buildSearchUrls(indexer: any, media: MediaRequest, metadata: MediaMetad
   const imdb = media.imdbId.startsWith("tt") ? media.imdbId.replace("tt", "") : "";
   const titles = buildQueryTitles(metadata);
   const baseUrl = String(indexer.base_url || "").replace(/\/+$/, "");
+  const apikey = indexer.encrypted_api_key;
+  const limit = 100;
+  const offsets = [0, 100];
   const seasonEpisode = media.type === "series" && media.season && media.episode
     ? `S${String(media.season).padStart(2, "0")}E${String(media.episode).padStart(2, "0")}`
     : "";
+  const seasonOnly = media.type === "series" && media.season
+    ? `S${String(media.season).padStart(2, "0")}`
+    : "";
 
   if (media.type === "movie") {
-    if (imdb) urls.push(`${baseUrl}/api?t=movie&apikey=${indexer.encrypted_api_key}&imdbid=${imdb}&limit=100&o=json`);
+    if (imdb) {
+      urls.push(buildNewznabUrl(baseUrl, { t: "movie", apikey, imdbid: imdb, limit, offset: 0 }));
+      urls.push(buildNewznabUrl(baseUrl, { t: "search", apikey, imdbid: imdb, cat: 2000, limit, offset: 0 }));
+    }
     for (const title of titles) {
-      urls.push(`${baseUrl}/api?t=movie&apikey=${indexer.encrypted_api_key}&q=${encodeURIComponent(title)}&limit=100&o=json`);
-      urls.push(`${baseUrl}/api?t=search&apikey=${indexer.encrypted_api_key}&q=${encodeURIComponent(title)}&limit=100&o=json`);
+      for (const offset of offsets) {
+        urls.push(buildNewznabUrl(baseUrl, { t: "search", apikey, q: title, cat: 2000, limit, offset }));
+      }
+      urls.push(buildNewznabUrl(baseUrl, { t: "movie", apikey, q: title, limit, offset: 0 }));
     }
   } else {
     if (imdb) {
-      urls.push(`${baseUrl}/api?t=tvsearch&apikey=${indexer.encrypted_api_key}&imdbid=${imdb}&season=${media.season}&ep=${media.episode}&limit=100&o=json`);
-      urls.push(`${baseUrl}/api?t=tvsearch&apikey=${indexer.encrypted_api_key}&imdbid=${imdb}&season=${media.season}&limit=100&o=json`);
+      urls.push(buildNewznabUrl(baseUrl, { t: "tvsearch", apikey, imdbid: imdb, season: media.season, ep: media.episode, limit, offset: 0 }));
+      urls.push(buildNewznabUrl(baseUrl, { t: "tvsearch", apikey, imdbid: imdb, season: media.season, limit, offset: 0 }));
+      urls.push(buildNewznabUrl(baseUrl, { t: "search", apikey, imdbid: imdb, cat: 5000, limit, offset: 0 }));
     }
     for (const title of titles) {
-      urls.push(`${baseUrl}/api?t=tvsearch&apikey=${indexer.encrypted_api_key}&q=${encodeURIComponent(title)}&season=${media.season}&ep=${media.episode}&limit=100&o=json`);
-      urls.push(`${baseUrl}/api?t=tvsearch&apikey=${indexer.encrypted_api_key}&q=${encodeURIComponent(title)}&season=${media.season}&limit=100&o=json`);
+      urls.push(buildNewznabUrl(baseUrl, { t: "tvsearch", apikey, q: title, season: media.season, ep: media.episode, limit, offset: 0 }));
+      urls.push(buildNewznabUrl(baseUrl, { t: "tvsearch", apikey, q: title, season: media.season, limit, offset: 0 }));
       if (seasonEpisode) {
-        urls.push(`${baseUrl}/api?t=search&apikey=${indexer.encrypted_api_key}&q=${encodeURIComponent(`${title} ${seasonEpisode}`)}&limit=100&o=json`);
+        for (const offset of offsets) {
+          urls.push(buildNewznabUrl(baseUrl, { t: "search", apikey, q: `${title} ${seasonEpisode}`, cat: 5000, limit, offset }));
+        }
+      }
+      if (seasonOnly) {
+        urls.push(buildNewznabUrl(baseUrl, { t: "search", apikey, q: `${title} ${seasonOnly}`, cat: 5000, limit, offset: 0 }));
       }
     }
   }
 
-  return [...new Set(urls)].slice(0, 18);
+  return [...new Set(urls)].slice(0, 32);
 }
 
 function asArray(items: any): any[] {
@@ -141,6 +178,149 @@ function asArray(items: any): any[] {
 
 function isArchiveRelease(title: string): boolean {
   return /(?:^|[.\s_-])(?:rar|r\d{2}|7z(?:\.\d{3})?|zip|par2|sfv|nfo)(?:$|[.\s_-])/i.test(title);
+}
+
+function decodeXml(value: string): string {
+  return value
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;/g, "'");
+}
+
+function tagValue(block: string, tag: string): string | undefined {
+  const match = block.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i"));
+  return match?.[1] ? decodeXml(match[1]).trim() : undefined;
+}
+
+function parseXmlItems(xml: string): any[] {
+  const items: any[] = [];
+  for (const match of xml.matchAll(/<item\b[\s\S]*?<\/item>/gi)) {
+    const block = match[0];
+    const enclosureMatch = block.match(/<enclosure\b([^>]*)>/i);
+    const enclosureAttrs: Record<string, string> = {};
+    if (enclosureMatch?.[1]) {
+      for (const attr of enclosureMatch[1].matchAll(/([:\w-]+)="([^"]*)"/g)) {
+        enclosureAttrs[attr[1]] = decodeXml(attr[2]);
+      }
+    }
+    const attrs = [...block.matchAll(/<(?:newznab:)?attr\b([^>]*)\/?>/gi)].map(attrMatch => {
+      const payload: Record<string, string> = {};
+      for (const attr of attrMatch[1].matchAll(/([:\w-]+)="([^"]*)"/g)) {
+        payload[attr[1]] = decodeXml(attr[2]);
+      }
+      return payload;
+    });
+    items.push({
+      title: tagValue(block, "title"),
+      link: tagValue(block, "link"),
+      guid: tagValue(block, "guid"),
+      pubDate: tagValue(block, "pubDate"),
+      enclosure: Object.keys(enclosureAttrs).length > 0 ? { "@attributes": enclosureAttrs } : undefined,
+      "newznab:attr": attrs
+    });
+  }
+  return items;
+}
+
+async function fetchNewznabItems(searchUrl: string): Promise<any[]> {
+  const res = await request(searchUrl, {
+    headers: { "Accept": "application/json, application/xml, text/xml;q=0.9, */*;q=0.8" },
+    signal: AbortSignal.timeout(5000)
+  });
+  const body = await res.body.text();
+  try {
+    const data = JSON.parse(body) as any;
+    return asArray(data.channel?.item || data.rss?.channel?.item || data.item);
+  } catch {
+    return parseXmlItems(body);
+  }
+}
+
+function resolveFirst(...values: any[]): any {
+  for (const value of values) {
+    if (value === undefined || value === null) continue;
+    if (Array.isArray(value)) {
+      const nested = resolveFirst(...value);
+      if (nested !== undefined && nested !== null) return nested;
+      continue;
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed) return trimmed;
+      continue;
+    }
+    return value;
+  }
+  return undefined;
+}
+
+function attrMap(item: any): Record<string, any> {
+  const map: Record<string, any> = {};
+  const sources = compact([
+    item.attr,
+    item.attrs,
+    item.attribute,
+    item.attributes,
+    item["newznab:attr"],
+    item["newznab:attrs"]
+  ]);
+  for (const source of sources.flatMap(source => Array.isArray(source) ? source : [source])) {
+    const payload = source?.["@attributes"] || source?.$ || source;
+    const name = String(payload?.name || payload?.Name || payload?.key || payload?.field || "").trim().toLowerCase();
+    const value = payload?.value ?? payload?.Value ?? payload?.content ?? payload?.text;
+    if (name && value !== undefined && value !== null) {
+      map[name] = value;
+    }
+  }
+  return map;
+}
+
+function parseGuid(rawGuid: any): string | undefined {
+  if (!rawGuid) return undefined;
+  if (typeof rawGuid === "string") return rawGuid;
+  return rawGuid._ || rawGuid["#text"] || rawGuid.url || rawGuid.href;
+}
+
+function enclosureAttrs(item: any): Record<string, any> {
+  const enclosure = Array.isArray(item.enclosure) ? item.enclosure[0] : item.enclosure;
+  return enclosure?.["@attributes"] || enclosure?.$ || enclosure || {};
+}
+
+function getNzbUrl(item: any, attrs: Record<string, any>): string | undefined {
+  const enclosure = enclosureAttrs(item);
+  const guid = parseGuid(item.guid);
+  return resolveFirst(
+    enclosure.url,
+    enclosure.href,
+    item.link,
+    item.url,
+    item.downloadUrl,
+    item.download_url,
+    attrs.downloadurl,
+    attrs.url,
+    guid
+  );
+}
+
+function getItemSize(item: any, attrs: Record<string, any>, parsedSizeBytes?: number): number {
+  const enclosure = enclosureAttrs(item);
+  const value = resolveFirst(
+    enclosure.length,
+    attrs.size,
+    attrs.filesize,
+    attrs.contentlength,
+    attrs["content-length"],
+    attrs.length,
+    attrs.nzbsize,
+    item.size,
+    item.Size,
+    parsedSizeBytes
+  );
+  const size = Number.parseInt(String(value || ""), 10);
+  return Number.isFinite(size) ? size : 0;
 }
 
 export async function getIndexerSources(
@@ -182,15 +362,15 @@ export async function getIndexerSources(
       const rawItems: any[] = [];
       const seenItems = new Set<string>();
       const searchResults = await Promise.allSettled(buildSearchUrls(indexer, media, metadata).map(async (searchUrl) => {
-        const res = await request(searchUrl, { signal: AbortSignal.timeout(2500) });
-        const data = await res.body.json() as any;
-        return asArray(data.channel && data.channel.item ? data.channel.item : data.item);
+        return fetchNewznabItems(searchUrl);
       }));
 
       for (const result of searchResults) {
         if (result.status !== "fulfilled") continue;
         for (const item of result.value) {
-          const key = `${item.title || ""}|${item.link || item.guid || ""}`;
+          const attrs = attrMap(item);
+          const nzbUrl = getNzbUrl(item, attrs);
+          const key = `${item.title || ""}|${nzbUrl || parseGuid(item.guid) || ""}`;
           if (!seenItems.has(key)) {
             seenItems.add(key);
             rawItems.push(item);
@@ -241,25 +421,19 @@ export async function getIndexerSources(
       }
 
       for (const item of topItems) {
-        let nzbUrl = item.link || (item.enclosure && item.enclosure["@attributes"] && item.enclosure["@attributes"].url);
+        const attrs = attrMap(item);
+        let nzbUrl = getNzbUrl(item, attrs);
         if (!nzbUrl) continue;
         
         if (nzbUrl.includes("&") && !nzbUrl.includes("?")) {
           nzbUrl = nzbUrl.replace("&", "?");
         }
 
-        const title = item.title || "Deepbrid NZB";
+        const title = resolveFirst(item.title, attrs.title, parseGuid(item.guid), "Deepbrid NZB");
         if (isArchiveRelease(title)) continue;
         const parsed = parseRelease(title);
         const match = scoreReleaseMatch(title, media, parsed, metadata);
-        
-        let sizeBytes = 0;
-        if (item.enclosure && item.enclosure["@attributes"] && item.enclosure["@attributes"].length) {
-            sizeBytes = parseInt(item.enclosure["@attributes"].length);
-        } else if (item.size) {
-            sizeBytes = parseInt(item.size);
-        }
-        if (!sizeBytes && parsed.sizeBytes) sizeBytes = parsed.sizeBytes;
+        const sizeBytes = getItemSize(item, attrs, parsed.sizeBytes);
 
         candidates.push({
           id: nanoid(),
@@ -285,6 +459,7 @@ export async function getIndexerSources(
           absoluteEpisode: parsed.absoluteEpisode,
           seasonPack: parsed.seasonPack,
           sizeBytes: sizeBytes,
+          language: attrs.language ? String(attrs.language) : undefined,
           matchScore: match.score,
           matchReason: match.reason,
           score: 1000 + match.score + (sizeBytes / (1024 * 1024 * 1024)),
@@ -301,5 +476,5 @@ export async function getIndexerSources(
   const timeoutPromise = new Promise(resolve => setTimeout(resolve, 5000));
   await Promise.race([Promise.allSettled(indexerPromises), timeoutPromise]);
 
-  return candidates;
+  return candidates.sort((a, b) => b.score - a.score);
 }
