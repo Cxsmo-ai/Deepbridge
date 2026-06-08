@@ -154,6 +154,12 @@ function buildQueryTitles(metadata: MediaMetadata): string[] {
   return out.slice(0, 8);
 }
 
+function normalizeNewznabApiUrl(rawBaseUrl: string): string {
+  const baseUrl = String(rawBaseUrl || "").replace(/\/+$/, "");
+  if (/\/api$/i.test(baseUrl)) return baseUrl;
+  return `${baseUrl}/api`;
+}
+
 function buildNewznabUrl(baseUrl: string, params: Record<string, string | number | undefined>): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
@@ -163,7 +169,7 @@ function buildNewznabUrl(baseUrl: string, params: Record<string, string | number
   search.set("extended", "1");
   search.set("attrs", NEWZNAB_ATTRS);
   search.set("o", "json");
-  return `${baseUrl}/api?${search.toString()}`;
+  return `${normalizeNewznabApiUrl(baseUrl)}?${search.toString()}`;
 }
 
 function buildSearchUrls(indexer: any, media: MediaRequest, metadata: MediaMetadata): string[] {

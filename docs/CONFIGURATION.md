@@ -25,6 +25,8 @@ The page can encode user-specific settings into a Stremio manifest URL. Treat ge
 
 External indexers should be Newznab-compatible. Deepbridge searches them with TV/movie-specific Newznab queries plus broader fallback searches, ranks results, filters obvious archive-only entries, and resolves selected NZBs through Deepbrid.
 
+Indexer URLs can be entered either as the service root or the Newznab API endpoint. For example, both `https://indexer.example` and `https://indexer.example/api` are accepted; Deepbridge normalizes them before searching.
+
 ## External result mode
 
 The dashboard supports two external result modes:
