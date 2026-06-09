@@ -17,6 +17,10 @@ export interface UserConfig {
   easynewsUsername?: string;
   easynewsPassword?: string;
   easynewsMaxResults?: number;
+  // Timeout overrides (milliseconds)
+  officialTimeout?: number;
+  resolveTimeout?: number;
+  indexerTimeout?: number;
   // Legacy
   indexerUrl?: string;
   indexerApiKey?: string;

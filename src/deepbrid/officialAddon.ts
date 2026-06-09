@@ -79,7 +79,7 @@ export async function getOfficialDeepbridSources(
   userConfig?: any
 ): Promise<SourceCandidate[]> {
   try {
-    const streams = await client.getOfficialStremioStreams(media);
+    const streams = await client.getOfficialStremioStreams(media, userConfig?.officialTimeout);
     const mediaLabel = await getMediaDisplayLabel(media);
     
     const candidates = streams.map((stream, index) => {

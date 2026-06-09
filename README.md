@@ -1,4 +1,4 @@
-﻿# Deepbridge
+# Deepbridge
 
 <p align="center">
   <strong>A polished Stremio addon for Deepbrid-powered streaming with official sources, built-in Easynews support, and pre-resolved external Usenet indexer results.</strong>
@@ -239,8 +239,23 @@ Core environment variables:
 | `BASE_URL` | Recommended in production | Public addon base URL, e.g. `https://deepbridge.example.com`. |
 | `DEEPBRID_API_KEY` | Optional if using per-user config | Fallback Deepbrid API key. |
 | `NODE_ENV` | No | Set to `production` in hosted deployments. |
+| `DEEPBRID_OFFICIAL_TIMEOUT` | No | Timeout (ms) for official Deepbrid streams. Default `4500`. |
+| `DEEPBRID_RESOLVE_TIMEOUT` | No | Timeout (ms) for resolving NZB links via Deepbrid (direct mode). Default `4500`. |
+| `DEEPBRID_RESOLVE_TIMEOUT_PRECHECKED` | No | Timeout (ms) for resolving NZB links (prechecked mode). Default `7000`. |
+| `DEEPBRID_INDEXER_TIMEOUT` | No | Timeout (ms) for Newznab/NZBHydra indexer searches. Default `12000`. |
+| `DEEPBRID_INDEXER_TIMEOUT_EASYNEWS` | No | Timeout (ms) for Easynews indexer searches. Default `45000`. |
 
-Deepbrid API keys, Easynews credentials, external indexers, and per-source limits can also be configured per user from the dashboard and encoded into the generated manifest URL.
+Deepbrid API keys, Easynews credentials, external indexers, timeout overrides, and per-source limits can also be configured per user from the dashboard and encoded into the generated manifest URL.
+
+### Per-user timeout overrides
+
+The dashboard includes a **⏱ Timeout Settings** section where users can override the default timeouts without needing server-level environment variables. This is useful when custom Newznab or NZBHydra indexers are slow and cause `TimeoutError: The operation was aborted due to timeout` errors.
+
+- **Official Streams (ms)** — Timeout for fetching official Deepbrid streams. Default: 4500ms.
+- **Resolve Links (ms)** — Timeout for resolving NZB links through Deepbrid. Default: 4500ms.
+- **Indexer Search (ms)** — Timeout for Newznab/NZBHydra indexer searches. Default: 12000ms.
+
+Set to `0` to use server defaults. Per-user values take priority over environment variables.
 
 See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 

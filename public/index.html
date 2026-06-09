@@ -409,6 +409,28 @@
       </div>
     </div>
 
+    <div style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; margin-bottom: 30px;">
+      <label style="font-size: 0.95rem; color: var(--text); margin-bottom: 5px; display: block;">⏱ Timeout Settings</label>
+      <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 15px; line-height: 1.5;">Increase these if you see "TimeoutError: The operation was aborted due to timeout" errors, especially with slower indexers like NZBHydra or custom Newznab. Values are in milliseconds (1 second = 1000ms). Leave at 0 to use server defaults.</p>
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+        <div class="form-group" style="margin-bottom: 0;">
+          <label style="font-size: 0.8rem;">Official Streams (ms)</label>
+          <input type="number" id="officialTimeout" value="0" min="0" max="120000" step="500" placeholder="Default: 4500" style="padding: 8px; font-size: 0.9rem;" title="Timeout for fetching official Deepbrid streams. Default: 4500ms">
+          <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 4px;">Default: 4500</p>
+        </div>
+        <div class="form-group" style="margin-bottom: 0;">
+          <label style="font-size: 0.8rem;">Resolve Links (ms)</label>
+          <input type="number" id="resolveTimeout" value="0" min="0" max="120000" step="500" placeholder="Default: 4500" style="padding: 8px; font-size: 0.9rem;" title="Timeout for resolving NZB links through Deepbrid. Default: 4500ms">
+          <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 4px;">Default: 4500</p>
+        </div>
+        <div class="form-group" style="margin-bottom: 0;">
+          <label style="font-size: 0.8rem;">Indexer Search (ms)</label>
+          <input type="number" id="indexerTimeout" value="0" min="0" max="120000" step="500" placeholder="Default: 12000" style="padding: 8px; font-size: 0.9rem;" title="Timeout for Newznab/NZBHydra indexer searches. Default: 12000ms">
+          <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 4px;">Default: 12000</p>
+        </div>
+      </div>
+    </div>
+
     <div style="margin-top: 30px; margin-bottom: 10px; border-bottom: 1px solid var(--panel-border); padding-bottom: 10px;">
       <label style="font-size: 1.1rem; color: var(--text);">External Indexers</label>
     </div>
@@ -638,6 +660,9 @@
       easynewsUsername: document.getElementById('easynewsUsername').value.trim(),
       easynewsPassword: document.getElementById('easynewsPassword').value,
       easynewsMaxResults: Math.min(Math.max(parseInt(document.getElementById('easynewsMaxResults').value, 10) || 4, 1), 8),
+      officialTimeout: parseInt(document.getElementById('officialTimeout').value, 10) || 0,
+      resolveTimeout: parseInt(document.getElementById('resolveTimeout').value, 10) || 0,
+      indexerTimeout: parseInt(document.getElementById('indexerTimeout').value, 10) || 0,
       indexers: indexers,
       limits: {
         "2160p": getLimitVal(document.getElementById('dbLimit2160p').value),

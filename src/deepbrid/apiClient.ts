@@ -23,13 +23,13 @@ export class DeepbridClient {
     };
   }
 
-  async getOfficialStremioStreams(media: MediaRequest) {
+  async getOfficialStremioStreams(media: MediaRequest, overrideTimeoutMs?: number) {
     const baseUrl = "https://www.deepbrid.com/stremio"; 
     const path = media.type === "movie"
       ? `/stream/movie/${media.imdbId}.json`
       : `/stream/series/${media.imdbId}:${media.season}:${media.episode}.json`;
 
-    const timeoutMs = parseInt(process.env.DEEPBRID_OFFICIAL_TIMEOUT || "4500");
+    const timeoutMs = overrideTimeoutMs || parseInt(process.env.DEEPBRID_OFFICIAL_TIMEOUT || "4500");
 
     // The official Deepbrid Stremio endpoint requires ~qall.s0.rar1 config string
     const res = await request(`${baseUrl}/${this.apiKey}~qall.s0.rar1${path}`, {

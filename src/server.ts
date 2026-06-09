@@ -349,7 +349,7 @@ function isEasynewsCandidate(candidate: SourceCandidate): boolean {
   return sourceKey(candidate).toLowerCase().includes("easynews");
 }
 
-async function pregrabExternalCandidates(client: DeepbridClient, candidates: SourceCandidate[], mode: "direct" | "prechecked" = "direct"): Promise<SourceCandidate[]> {
+async function pregrabExternalCandidates(client: DeepbridClient, candidates: SourceCandidate[], mode: "direct" | "prechecked" = "direct", userConfig?: any): Promise<SourceCandidate[]> {
   const startedAt = Date.now();
   const directMode = mode === "direct";
   const deadlineMs = directMode ? 22000 : 22000;
@@ -393,6 +393,8 @@ async function pregrabExternalCandidates(client: DeepbridClient, candidates: Sou
   function addTimeoutFor(candidate: SourceCandidate): number {
     const source = sourceKey(candidate).toLowerCase();
     if (source.includes("easynews")) return directMode ? 18000 : 16000;
+    const userResolveTimeout = userConfig?.resolveTimeout;
+    if (userResolveTimeout && Number.isFinite(userResolveTimeout) && userResolveTimeout > 0) return userResolveTimeout;
     return directMode ? parseInt(process.env.DEEPBRID_RESOLVE_TIMEOUT || "4500") : parseInt(process.env.DEEPBRID_RESOLVE_TIMEOUT_PRECHECKED || "7000");
   }
 
@@ -499,7 +501,7 @@ async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, 
     const indexerCandidates = indexerResult.status === "fulfilled" ? indexerResult.value : [];
     const easynewsDirectCandidates = easynewsResult.status === "fulfilled" ? easynewsResult.value : [];
     const externalMode = userConfig?.externalResultMode === "prechecked" ? "prechecked" : "direct";
-    const readyIndexerCandidates = await pregrabExternalCandidates(client, indexerCandidates, externalMode);
+    const readyIndexerCandidates = await pregrabExternalCandidates(client, indexerCandidates, externalMode, userConfig);
     const externalCandidates = externalMode === "direct"
       ? [
           ...indexerCandidates.filter(candidate => !isEasynewsCandidate(candidate)),

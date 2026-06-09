@@ -509,7 +509,8 @@ export async function getIndexerSources(
       const seenItems = new Set<string>();
       const searchUrls = buildSearchUrls(indexer, media, metadata);
       const easynewsMode = isEasynewsIndexer(indexer);
-      const searchTimeoutMs = easynewsMode ? parseInt(process.env.DEEPBRID_INDEXER_TIMEOUT_EASYNEWS || "45000") : parseInt(process.env.DEEPBRID_INDEXER_TIMEOUT || "12000");
+      const userIndexerTimeout = userConfig?.indexerTimeout;
+      const searchTimeoutMs = easynewsMode ? parseInt(process.env.DEEPBRID_INDEXER_TIMEOUT_EASYNEWS || "45000") : (userIndexerTimeout && Number.isFinite(userIndexerTimeout) && userIndexerTimeout > 0 ? userIndexerTimeout : parseInt(process.env.DEEPBRID_INDEXER_TIMEOUT || "12000"));
       indexerStats.plannedSearches = searchUrls.length;
       const searchResults: PromiseSettledResult<any[]>[] = [];
       if (easynewsMode) {
@@ -650,7 +651,8 @@ export async function getIndexerSources(
   });
 
   // Give broad Newznab fan-out enough time to return useful candidates.
-  const timeoutPromise = new Promise(resolve => setTimeout(resolve, parseInt(process.env.DEEPBRID_INDEXER_TIMEOUT || "12000")));
+  const fanoutTimeout = userConfig?.indexerTimeout && Number.isFinite(userConfig.indexerTimeout) && userConfig.indexerTimeout > 0 ? userConfig.indexerTimeout : parseInt(process.env.DEEPBRID_INDEXER_TIMEOUT || "12000");
+  const timeoutPromise = new Promise(resolve => setTimeout(resolve, fanoutTimeout));
   await Promise.race([Promise.allSettled(indexerPromises), timeoutPromise]);
 
   stats.finishedAt = new Date().toISOString();
