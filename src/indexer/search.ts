@@ -509,7 +509,7 @@ export async function getIndexerSources(
       const seenItems = new Set<string>();
       const searchUrls = buildSearchUrls(indexer, media, metadata);
       const easynewsMode = isEasynewsIndexer(indexer);
-      const searchTimeoutMs = easynewsMode ? 45000 : 12000;
+      const searchTimeoutMs = easynewsMode ? parseInt(process.env.DEEPBRID_INDEXER_TIMEOUT_EASYNEWS || "45000") : parseInt(process.env.DEEPBRID_INDEXER_TIMEOUT || "12000");
       indexerStats.plannedSearches = searchUrls.length;
       const searchResults: PromiseSettledResult<any[]>[] = [];
       if (easynewsMode) {
@@ -650,7 +650,7 @@ export async function getIndexerSources(
   });
 
   // Give broad Newznab fan-out enough time to return useful candidates.
-  const timeoutPromise = new Promise(resolve => setTimeout(resolve, 12000));
+  const timeoutPromise = new Promise(resolve => setTimeout(resolve, parseInt(process.env.DEEPBRID_INDEXER_TIMEOUT || "12000")));
   await Promise.race([Promise.allSettled(indexerPromises), timeoutPromise]);
 
   stats.finishedAt = new Date().toISOString();

@@ -393,7 +393,7 @@ async function pregrabExternalCandidates(client: DeepbridClient, candidates: Sou
   function addTimeoutFor(candidate: SourceCandidate): number {
     const source = sourceKey(candidate).toLowerCase();
     if (source.includes("easynews")) return directMode ? 18000 : 16000;
-    return directMode ? 4500 : 7000;
+    return directMode ? parseInt(process.env.DEEPBRID_RESOLVE_TIMEOUT || "4500") : parseInt(process.env.DEEPBRID_RESOLVE_TIMEOUT_PRECHECKED || "7000");
   }
 
   async function worker() {

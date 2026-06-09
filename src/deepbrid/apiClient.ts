@@ -29,9 +29,11 @@ export class DeepbridClient {
       ? `/stream/movie/${media.imdbId}.json`
       : `/stream/series/${media.imdbId}:${media.season}:${media.episode}.json`;
 
+    const timeoutMs = parseInt(process.env.DEEPBRID_OFFICIAL_TIMEOUT || "4500");
+
     // The official Deepbrid Stremio endpoint requires ~qall.s0.rar1 config string
     const res = await request(`${baseUrl}/${this.apiKey}~qall.s0.rar1${path}`, {
-      signal: AbortSignal.timeout(4500)
+      signal: AbortSignal.timeout(timeoutMs)
     });
     if (res.statusCode !== 200) {
       throw new Error(`Failed to fetch official streams: ${res.statusCode}`);
