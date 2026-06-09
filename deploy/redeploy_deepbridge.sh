@@ -14,7 +14,7 @@ podman run -d \
   -e PORT=7000 \
   -e NODE_ENV=production \
   -l traefik.enable=true \
-  -l 'traefik.http.routers.deepbridge.rule=Host(`d7j3rx.deepascension.net`)' \
+  -l 'traefik.http.routers.deepbridge.rule=Host(`djjdhdhdhdh`)' \
   -l traefik.http.routers.deepbridge.entrypoints=websecure \
   -l traefik.http.routers.deepbridge.tls.certresolver=myresolver \
   -l traefik.http.services.deepbridge.loadbalancer.server.port=7000 \
