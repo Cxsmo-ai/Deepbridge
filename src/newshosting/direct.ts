@@ -17,6 +17,7 @@ type NewshostingStats = {
   failedSearches: number;
   rawItems: number;
   dedupedItems: number;
+  filteredItems: number;
   selectedItems: number;
   candidates: number;
   errors: Record<string, number>;
@@ -32,6 +33,7 @@ let lastNewshostingStats: NewshostingStats = {
   failedSearches: 0,
   rawItems: 0,
   dedupedItems: 0,
+  filteredItems: 0,
   selectedItems: 0,
   candidates: 0,
   errors: {}
@@ -52,7 +54,7 @@ function credentials(userConfig?: any) {
     host: String(userConfig?.newshostingHost || process.env.NEWSHOSTING_SERVER_HOST || "srv.aboutusenet.com"),
     ip: String(userConfig?.newshostingIp || process.env.NEWSHOSTING_SERVER_IP || "81.171.93.8"),
     port: Number(userConfig?.newshostingPort || process.env.NEWSHOSTING_SERVER_PORT || 5598) || 5598,
-    maxNzbFiles: Number(userConfig?.newshostingMaxNzbFiles || process.env.NEWSHOSTING_MAX_NZB_FILES || 160) || 160
+    maxNzbFiles: Number(userConfig?.newshostingMaxNzbFiles || process.env.NEWSHOSTING_MAX_NZB_FILES || 32) || 32
   };
 }
 
@@ -93,16 +95,16 @@ function buildQueryTitles(metadata: MediaMetadata, media: MediaRequest): string[
       }
     }
   }
-  return out.slice(0, 5);
+  return out.slice(0, 3);
 }
 
 function buildQueries(metadata: MediaMetadata, media: MediaRequest): string[] {
   const titles = buildQueryTitles(metadata, media);
   if (media.type === "series" && media.season && media.episode) {
     const code = `S${String(media.season).padStart(2, "0")}E${String(media.episode).padStart(2, "0")}`;
-    return [...new Set(titles.flatMap(title => [`${title} ${code}`, title]))].slice(0, 8);
+    return [...new Set(titles.flatMap(title => [`${title} ${code}`, title]))].slice(0, 4);
   }
-  return [...new Set(titles.flatMap(title => metadata.year ? [`${title} ${metadata.year}`, title] : [title]))].slice(0, 8);
+  return [...new Set(titles.flatMap(title => metadata.year ? [`${title} ${metadata.year}`, title] : [title]))].slice(0, 4);
 }
 
 function errorCategory(error: unknown): string {
@@ -125,6 +127,43 @@ function encodeId(result: NewshostingResult): string {
 
 function isArchiveRelease(title: string): boolean {
   return /(?:^|[.\s_-])(?:rar|r\d{2}|7z(?:\.\d{3})?|zip|par2|sfv|nfo)(?:$|[.\s_-])/i.test(title);
+}
+
+function looksLikeVideoRelease(title: string): boolean {
+  return /\.(?:mkv|mp4|m4v|avi|mov|ts|m2ts)(?:$|[\s._-])/i.test(title)
+    || /\b(?:2160p|1080p|720p|480p|4k|uhd|web-?dl|webrip|blu-?ray|remux|hdtv)\b/i.test(title);
+}
+
+function hasBadReleaseSignal(title: string): boolean {
+  return /\b(?:sample|trailer|camrip|cam|telesync|hdts|tsrip|tc|telecine|screener|xbet|password|encrypted)\b/i.test(title)
+    || /(?:^|[.\s_-])(?:exe|scr|bat|cmd|msi|iso|img)(?:$|[.\s_-])/i.test(title);
+}
+
+function sizeLooksPlayable(size: number): boolean {
+  if (!size) return true;
+  const gb = size / 1073741824;
+  return gb >= 0.25 && gb <= 90;
+}
+
+function fileCountPenalty(files: number): number {
+  if (!files || files <= 1) return 0;
+  if (files <= 4) return 60;
+  if (files <= 12) return 160;
+  if (files <= 24) return 320;
+  return 700;
+}
+
+function newshostingRankScore(result: NewshostingResult, matchScore: number): number {
+  let score = matchScore;
+  if (looksLikeVideoRelease(result.name)) score += 220;
+  if (/\.(?:mkv|mp4|m4v)(?:$|[\s._-])/i.test(result.name)) score += 240;
+  if (result.files > 0) score -= fileCountPenalty(result.files);
+  if (result.size > 0) {
+    const gb = result.size / 1073741824;
+    if (gb >= 1.5 && gb <= 35) score += 120;
+    if (gb > 55) score -= 180;
+  }
+  return score;
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMessage: string): Promise<T> {
@@ -194,6 +233,7 @@ export async function getNewshostingSources(
     failedSearches: 0,
     rawItems: 0,
     dedupedItems: 0,
+    filteredItems: 0,
     selectedItems: 0,
     candidates: 0,
     errors: {}
@@ -212,14 +252,15 @@ export async function getNewshostingSources(
   const results: NewshostingResult[] = [];
   const options: NewshostingOptions = {
     ...creds,
-    timeoutMs: Number(userConfig?.newshostingTimeout || userConfig?.indexerTimeout || 25000) || 25000
+    timeoutMs: Number(userConfig?.newshostingSearchTimeout || userConfig?.indexerTimeout || 8000) || 8000
   };
 
-  for (const query of queries) {
-    const client = new NewshostingClient(options);
-    try {
-      await client.connect();
-      const response = await client.search(query, 1, 100);
+  const client = new NewshostingClient(options);
+  try {
+    await client.connect();
+    for (const query of queries) {
+      try {
+        const response = await client.search(query, 1, 50);
       stats.fulfilledSearches++;
       for (const result of response.results) {
         stats.rawItems++;
@@ -229,28 +270,40 @@ export async function getNewshostingSources(
           results.push(result);
         }
       }
-    } catch (error) {
-      stats.failedSearches++;
-      const category = errorCategory(error);
-      stats.errors[category] = (stats.errors[category] || 0) + 1;
-    } finally {
-      client.close();
+      } catch (error) {
+        stats.failedSearches++;
+        const category = errorCategory(error);
+        stats.errors[category] = (stats.errors[category] || 0) + 1;
+      }
     }
+  } catch (error) {
+    stats.failedSearches += Math.max(queries.length, 1);
+    const category = errorCategory(error);
+    stats.errors[category] = (stats.errors[category] || 0) + 1;
+  } finally {
+    client.close();
   }
 
   stats.dedupedItems = results.length;
   const candidates: SourceCandidate[] = [];
   const maxResults = Math.max(0, Math.min(Number(userConfig?.newshostingMaxResults || 12) || 12, 40));
-  const sorted = results
+  const filtered = results
     .filter(result => result.name && result.index && result.scope && result.itemId && !isArchiveRelease(result.name))
     .filter(result => !result.files || result.files <= creds.maxNzbFiles)
+    .filter(result => looksLikeVideoRelease(result.name))
+    .filter(result => !hasBadReleaseSignal(result.name))
+    .filter(result => sizeLooksPlayable(result.size));
+  stats.filteredItems = filtered.length;
+
+  const sorted = filtered
     .map(result => {
       const parsed = parseRelease(result.name);
       const match = scoreReleaseMatch(result.name, media, parsed, metadata);
-      return { result, parsed, match };
+      const rankScore = newshostingRankScore(result, match.score);
+      return { result, parsed, match, rankScore };
     })
     .filter(item => item.match.score >= (media.type === "series" ? 650 : 600))
-    .sort((a, b) => b.match.score - a.match.score || b.result.size - a.result.size)
+    .sort((a, b) => b.rankScore - a.rankScore || a.result.files - b.result.files || b.result.size - a.result.size)
     .slice(0, maxResults);
 
   stats.selectedItems = sorted.length;
@@ -283,7 +336,7 @@ export async function getNewshostingSources(
       sizeBytes: item.result.size,
       matchScore: item.match.score,
       matchReason: item.match.reason,
-      score: 2500 + item.match.score + (item.result.size / 1073741824),
+      score: 2500 + item.rankScore + (item.result.size / 1073741824),
       createdAt: new Date().toISOString()
     });
     stats.candidates++;

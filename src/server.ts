@@ -566,14 +566,20 @@ async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, 
     const easynewsDirectCandidates = easynewsResult.status === "fulfilled" ? easynewsResult.value : [];
     const newshostingCandidates = newshostingResult.status === "fulfilled" ? newshostingResult.value : [];
     const externalMode = userConfig?.externalResultMode === "prechecked" ? "prechecked" : "direct";
-    const readyIndexerCandidates = await pregrabExternalCandidates(client, [...indexerCandidates, ...newshostingCandidates], externalMode, userConfig);
+    const pregrabCandidates = userConfig?.newshostingPrecheck === true
+      ? [...indexerCandidates, ...newshostingCandidates]
+      : indexerCandidates;
+    const readyIndexerCandidates = await pregrabExternalCandidates(client, pregrabCandidates, externalMode, userConfig);
     const externalCandidates = externalMode === "direct"
       ? [
           ...indexerCandidates.filter(candidate => !isEasynewsCandidate(candidate)),
           ...newshostingCandidates,
           ...readyIndexerCandidates
         ]
-      : readyIndexerCandidates;
+      : [
+          ...readyIndexerCandidates,
+          ...newshostingCandidates
+        ];
     
     const candidates = dedupeCandidates([...officialCandidates, ...externalCandidates, ...easynewsDirectCandidates]);
     const streams = formatStreams(candidates, dynamicBaseUrl, token);

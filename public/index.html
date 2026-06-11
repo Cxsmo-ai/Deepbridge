@@ -426,7 +426,7 @@
         </div>
         <div class="form-group" style="margin-bottom: 0;">
           <label>Max NZB Files</label>
-          <input type="text" id="newshostingMaxNzbFiles" value="160" placeholder="1-500" style="padding: 8px; font-size: 0.9rem;">
+          <input type="text" id="newshostingMaxNzbFiles" value="32" placeholder="1-500" style="padding: 8px; font-size: 0.9rem;">
         </div>
       </div>
     </div>
@@ -711,7 +711,7 @@
       newshostingIp: document.getElementById('newshostingIp').value.trim() || '81.171.93.8',
       newshostingPort: parseInt(document.getElementById('newshostingPort').value, 10) || 5598,
       newshostingMaxResults: Math.min(Math.max(parseInt(document.getElementById('newshostingMaxResults').value, 10) || 12, 1), 40),
-      newshostingMaxNzbFiles: Math.min(Math.max(parseInt(document.getElementById('newshostingMaxNzbFiles').value, 10) || 160, 1), 500),
+      newshostingMaxNzbFiles: Math.min(Math.max(parseInt(document.getElementById('newshostingMaxNzbFiles').value, 10) || 32, 1), 500),
       officialTimeout: parseInt(document.getElementById('officialTimeout').value, 10) || 0,
       resolveTimeout: parseInt(document.getElementById('resolveTimeout').value, 10) || 0,
       indexerTimeout: parseInt(document.getElementById('indexerTimeout').value, 10) || 0,

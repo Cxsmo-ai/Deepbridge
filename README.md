@@ -129,7 +129,8 @@ Newshosting behavior:
 
 - Deepbridge logs into Newshosting's connector protocol directly.
 - Search results are ranked against the requested movie or episode.
-- When Deepbrid needs an NZB, Deepbridge generates that NZB on the same addon server.
+- Newshosting stream listing is on-demand by default, so searches stay fast and Deepbrid only receives the NZB when a stream is opened.
+- When Deepbrid needs an NZB, Deepbridge generates that NZB on the same addon server in an isolated worker.
 - Oversized Newshosting posts are skipped when they exceed the configured max NZB file count.
 - Deepbrid receives an addon-hosted NZB URL; there is no separate Newznab API key.
 - Stream cards are labeled `Newshosting` when the result came from this built-in source.
