@@ -118,7 +118,8 @@ function encodeId(result: NewshostingResult): string {
     i: result.index,
     s: result.scope,
     it: result.itemId,
-    t: result.name
+    t: result.name,
+    f: result.files
   })).toString("base64url");
 }
 
@@ -140,16 +141,26 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMessa
   }
 }
 
-export function decodeNewshostingNzbId(encoded: string): { index: string; scope: string; itemId: string; title?: string } {
+export function decodeNewshostingNzbId(encoded: string): { index: string; scope: string; itemId: string; title?: string; files?: number } {
   const parsed = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
   if (!parsed?.i || !parsed?.s || !parsed?.it) throw new Error("invalid_newshosting_nzb_id");
-  return { index: String(parsed.i), scope: String(parsed.s), itemId: String(parsed.it), title: parsed.t ? String(parsed.t) : undefined };
+  const files = Number(parsed.f);
+  return {
+    index: String(parsed.i),
+    scope: String(parsed.s),
+    itemId: String(parsed.it),
+    title: parsed.t ? String(parsed.t) : undefined,
+    files: Number.isFinite(files) ? files : undefined
+  };
 }
 
 export async function createNewshostingNzb(encodedId: string, userConfig?: any): Promise<string> {
   const creds = credentials(userConfig);
   if (!creds.enabled) throw new Error("newshosting_not_configured");
   const id = decodeNewshostingNzbId(encodedId);
+  if (id.files && id.files > creds.maxNzbFiles) {
+    throw new Error("newshosting_nzb_too_many_files");
+  }
   const client = new NewshostingClient({
     ...creds,
     timeoutMs: Number(userConfig?.newshostingTimeout || userConfig?.indexerTimeout || 25000) || 25000
@@ -232,6 +243,7 @@ export async function getNewshostingSources(
   const maxResults = Math.max(0, Math.min(Number(userConfig?.newshostingMaxResults || 12) || 12, 40));
   const sorted = results
     .filter(result => result.name && result.index && result.scope && result.itemId && !isArchiveRelease(result.name))
+    .filter(result => !result.files || result.files <= creds.maxNzbFiles)
     .map(result => {
       const parsed = parseRelease(result.name);
       const match = scoreReleaseMatch(result.name, media, parsed, metadata);
