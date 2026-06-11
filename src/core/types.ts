@@ -17,6 +17,7 @@ export type SourceCandidate = {
     | "newshosting-direct"
     | "deepbrid-torrent-library"
     | "external-torrent"
+    | "stremio-addon-torrent"
     | "manual-nzb";
 
   title: string;

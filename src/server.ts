@@ -14,6 +14,7 @@ import { getIndexerSources, getLastIndexerSearchStats } from "./indexer/search";
 import { getEasynewsDirectSources, getLastEasynewsDirectStats } from "./easynews/direct";
 import { getLastNewshostingStats, getNewshostingSources } from "./newshosting/direct";
 import { getLastTorrentStats, getTorrentSources, normalizeTorrent } from "./deepbrid/torrents";
+import { getLastUpstreamAddonStats, getUpstreamAddonSources } from "./stremio/upstreamAddons";
 import { decodeConfig } from "./core/configDecoder";
 import { dedupeCandidates } from "./core/releaseMatch";
 import { parseRelease } from "./core/parseRelease";
@@ -103,7 +104,8 @@ function cacheHealth() {
     indexerSearch: getLastIndexerSearchStats(),
     easynewsDirect: getLastEasynewsDirectStats(),
     newshostingDirect: getLastNewshostingStats(),
-    torrents: getLastTorrentStats()
+    torrents: getLastTorrentStats(),
+    upstreamAddons: getLastUpstreamAddonStats()
   };
 }
 
@@ -571,18 +573,20 @@ async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, 
     const client = new DeepbridClient(apiKey);
 
     const publicToken = token || "default_token";
-    const [officialResult, indexerResult, easynewsResult, newshostingResult, torrentResult] = await Promise.allSettled([
+    const [officialResult, indexerResult, easynewsResult, newshostingResult, torrentResult, upstreamAddonResult] = await Promise.allSettled([
       getOfficialDeepbridSources(client, media, userConfig),
       getIndexerSources(client, media, userConfig),
       getEasynewsDirectSources(media, userConfig),
       getNewshostingSources(media, userConfig, dynamicBaseUrl, publicToken),
-      getTorrentSources(client, media, userConfig, dynamicBaseUrl, publicToken)
+      getTorrentSources(client, media, userConfig, dynamicBaseUrl, publicToken),
+      getUpstreamAddonSources(media, userConfig, dynamicBaseUrl, publicToken)
     ]);
     const officialCandidates = officialResult.status === "fulfilled" ? officialResult.value : [];
     const indexerCandidates = indexerResult.status === "fulfilled" ? indexerResult.value : [];
     const easynewsDirectCandidates = easynewsResult.status === "fulfilled" ? easynewsResult.value : [];
     const newshostingCandidates = newshostingResult.status === "fulfilled" ? newshostingResult.value : [];
     const torrentCandidates = torrentResult.status === "fulfilled" ? torrentResult.value : [];
+    const upstreamAddonCandidates = upstreamAddonResult.status === "fulfilled" ? upstreamAddonResult.value : [];
     const externalMode = userConfig?.externalResultMode === "prechecked" ? "prechecked" : "direct";
     const pregrabCandidates = userConfig?.newshostingPrecheck === true
       ? [...indexerCandidates, ...newshostingCandidates]
@@ -599,7 +603,7 @@ async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, 
           ...newshostingCandidates
         ];
     
-    const candidates = dedupeCandidates([...officialCandidates, ...externalCandidates, ...easynewsDirectCandidates, ...torrentCandidates]);
+    const candidates = dedupeCandidates([...officialCandidates, ...externalCandidates, ...easynewsDirectCandidates, ...torrentCandidates, ...upstreamAddonCandidates]);
     const streams = formatStreams(candidates, dynamicBaseUrl, token);
     
     // Fallback if empty
@@ -692,7 +696,8 @@ app.get("/:token/health", async (request) => {
       newshostingDirectConfigured: Boolean(userConfig?.newshostingUsername && userConfig?.newshostingPassword),
       newshostingDirectEnabled: Boolean(userConfig?.newshostingEnabled !== false && userConfig?.newshostingUsername && userConfig?.newshostingPassword),
       deepbridLibraryEnabled: Boolean(userConfig?.deepbridLibraryEnabled !== false),
-      externalTorrents: Array.isArray(userConfig?.externalTorrents) ? userConfig.externalTorrents.length : 0
+      externalTorrents: Array.isArray(userConfig?.externalTorrents) ? userConfig.externalTorrents.length : 0,
+      stremioAddons: Array.isArray(userConfig?.stremioAddons) ? userConfig.stremioAddons.length : 0
     }
   };
 });

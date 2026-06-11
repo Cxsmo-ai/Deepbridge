@@ -41,6 +41,13 @@ export interface UserConfig {
     episode?: number;
     magnet: string;
   }>;
+  stremioAddons?: Array<{
+    name?: string;
+    url: string;
+    enabled?: boolean;
+    timeoutMs?: number;
+    maxResults?: number;
+  }>;
   // Timeout overrides (milliseconds)
   officialTimeout?: number;
   resolveTimeout?: number;

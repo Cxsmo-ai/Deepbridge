@@ -402,6 +402,11 @@
         <textarea id="externalTorrentMagnets" rows="4" placeholder="One magnet link per line" style="width: 100%; padding: 8px; font-size: 0.9rem; resize: vertical;"></textarea>
         <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 5px;">External magnets are added to Deepbrid only when opened. For best matching, keep this list focused on the media you want to expose.</p>
       </div>
+      <div class="form-group" style="margin-bottom: 0; margin-top: 15px;">
+        <label>Upstream Stremio Addons</label>
+        <textarea id="stremioAddonUrls" rows="4" placeholder="One manifest.json or addon base URL per line" style="width: 100%; padding: 8px; font-size: 0.9rem; resize: vertical;"></textarea>
+        <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 5px;">Deepbridge calls these addons for streams, extracts magnets/infoHashes, and adds them to Deepbrid only when opened.</p>
+      </div>
     </div>
 
     <div style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; margin-bottom: 30px;">
@@ -723,6 +728,7 @@
       easynewsMaxResults: Math.min(Math.max(parseInt(document.getElementById('easynewsMaxResults').value, 10) || 4, 1), 8),
       deepbridLibraryEnabled: document.getElementById('deepbridLibraryEnabled').value === 'true',
       externalTorrentMagnets: document.getElementById('externalTorrentMagnets').value.trim(),
+      stremioAddons: document.getElementById('stremioAddonUrls').value.split(/\r?\n/).map(url => url.trim()).filter(Boolean).map(url => ({ url })),
       newshostingEnabled: document.getElementById('newshostingEnabled').value === 'true',
       newshostingUsername: document.getElementById('newshostingUsername').value.trim(),
       newshostingPassword: document.getElementById('newshostingPassword').value,

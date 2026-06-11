@@ -28,6 +28,7 @@ function sourceLabel(candidate: SourceCandidate): string {
   if (candidate.origin === "newshosting-direct") return "Newshosting";
   if (candidate.origin === "deepbrid-torrent-library") return "Deepbrid Library";
   if (candidate.origin === "external-torrent") return "External Torrent";
+  if (candidate.origin === "stremio-addon-torrent") return "Stremio Addon";
   const displayMatch = candidate.displayName.match(/^\[([^\]]+)\]/);
   if (displayMatch) return displayMatch[1];
   return candidate.origin

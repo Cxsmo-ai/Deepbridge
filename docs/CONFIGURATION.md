@@ -45,6 +45,8 @@ Deepbridge can show ready torrents already present in your Deepbrid torrent libr
 
 External magnet links can be added in the dashboard, one per line. They are not searched like a tracker; they are static magnets that Deepbridge adds to Deepbrid only when opened.
 
+Upstream Stremio addon URLs can also be added, one per line. Deepbridge calls their standard `/stream/{type}/{id}.json` endpoint, extracts `magnet:` URLs or `infoHash` streams, and wraps them as Deepbrid-on-demand playback links. HTTP streams without a magnet/infoHash are ignored because Deepbrid torrent add needs torrent metadata.
+
 ## External result mode
 
 The dashboard supports two external result modes:
