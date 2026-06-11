@@ -84,6 +84,29 @@ export class DeepbridClient {
     return await res.body.json();
   }
 
+  async addTorrentMagnet(magnet: string, timeoutMs = 25000) {
+    const res = await request(`${this.baseUrl}/torrents/add`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${this.apiKey}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "application/json"
+      },
+      body: new URLSearchParams({ magnet }).toString(),
+      signal: AbortSignal.timeout(timeoutMs)
+    });
+    return await res.body.json();
+  }
+
+  async getTorrentInfo(id?: string, timeoutMs = 10000) {
+    const url = id ? `${this.baseUrl}/torrents/info?id=${encodeURIComponent(id)}` : `${this.baseUrl}/torrents/info`;
+    const res = await request(url, {
+      headers: this.headers,
+      signal: AbortSignal.timeout(timeoutMs)
+    });
+    return await res.body.json();
+  }
+
   async getDownloads(timeoutMs?: number) {
     const res = await request(`${this.baseUrl}/downloads`, {
       headers: this.headers,

@@ -39,6 +39,12 @@ Newshosting is configured in the dashboard as a built-in source, not as an exter
 
 Generated manifest URLs are private because they can contain the encoded Newshosting username/password.
 
+## Deepbrid torrent library
+
+Deepbridge can show ready torrents already present in your Deepbrid torrent library. Torrent library links are volatile, so stream cards point back to Deepbridge. When playback starts, Deepbridge refreshes `GET /torrents/info?id={id}` and redirects to the newest link instead of storing old `links[]` values.
+
+External magnet links can be added in the dashboard, one per line. They are not searched like a tracker; they are static magnets that Deepbridge adds to Deepbrid only when opened.
+
 ## External result mode
 
 The dashboard supports two external result modes:

@@ -15,6 +15,8 @@ export type SourceCandidate = {
     | "althub"
     | "easynews-direct"
     | "newshosting-direct"
+    | "deepbrid-torrent-library"
+    | "external-torrent"
     | "manual-nzb";
 
   title: string;

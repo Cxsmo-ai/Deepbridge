@@ -28,6 +28,19 @@ export interface UserConfig {
   newshostingSearchTimeout?: number;
   newshostingNzbTimeout?: number;
   newshostingPrecheck?: boolean;
+  deepbridLibraryEnabled?: boolean;
+  torrentLibraryTimeout?: number;
+  torrentInfoTimeout?: number;
+  torrentAddTimeout?: number;
+  externalTorrentMagnets?: string;
+  externalTorrents?: Array<{
+    title?: string;
+    name?: string;
+    imdbId?: string;
+    season?: number;
+    episode?: number;
+    magnet: string;
+  }>;
   // Timeout overrides (milliseconds)
   officialTimeout?: number;
   resolveTimeout?: number;

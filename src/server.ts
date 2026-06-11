@@ -13,6 +13,7 @@ import { formatStreams } from "./stremio/formatStreams";
 import { getIndexerSources, getLastIndexerSearchStats } from "./indexer/search";
 import { getEasynewsDirectSources, getLastEasynewsDirectStats } from "./easynews/direct";
 import { getLastNewshostingStats, getNewshostingSources } from "./newshosting/direct";
+import { getLastTorrentStats, getTorrentSources, normalizeTorrent } from "./deepbrid/torrents";
 import { decodeConfig } from "./core/configDecoder";
 import { dedupeCandidates } from "./core/releaseMatch";
 import { parseRelease } from "./core/parseRelease";
@@ -101,7 +102,8 @@ function cacheHealth() {
     deepbridAdd: lastPregrabStats,
     indexerSearch: getLastIndexerSearchStats(),
     easynewsDirect: getLastEasynewsDirectStats(),
-    newshostingDirect: getLastNewshostingStats()
+    newshostingDirect: getLastNewshostingStats(),
+    torrents: getLastTorrentStats()
   };
 }
 
@@ -256,6 +258,10 @@ function decodeResolvePayload(encoded: string): ResolvePayload {
   return { nzbUrl: decoded };
 }
 
+function decodeJsonPayload(encoded: string): any {
+  return JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+}
+
 function normalizePlayableUrl(url: string): string {
   return new URL(url, "https://www.deepbrid.com").toString();
 }
@@ -358,6 +364,10 @@ function selectPlayableFile(files: any[], payload: ResolvePayload): any {
   if (likelyEpisodeFiles.length === 1) return likelyEpisodeFiles[0];
 
   return undefined;
+}
+
+function selectTorrentLink(links: string[]): string | undefined {
+  return links.find(link => /\.(?:mkv|mp4|m4v|avi|mov|ts|m2ts)(?:$|[/?#&])/i.test(link)) || links[0];
 }
 
 async function resolveNzbToPlayableUrl(client: DeepbridClient, payload: ResolvePayload, addTimeoutMs = 25000): Promise<string> {
@@ -561,16 +571,18 @@ async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, 
     const client = new DeepbridClient(apiKey);
 
     const publicToken = token || "default_token";
-    const [officialResult, indexerResult, easynewsResult, newshostingResult] = await Promise.allSettled([
+    const [officialResult, indexerResult, easynewsResult, newshostingResult, torrentResult] = await Promise.allSettled([
       getOfficialDeepbridSources(client, media, userConfig),
       getIndexerSources(client, media, userConfig),
       getEasynewsDirectSources(media, userConfig),
-      getNewshostingSources(media, userConfig, dynamicBaseUrl, publicToken)
+      getNewshostingSources(media, userConfig, dynamicBaseUrl, publicToken),
+      getTorrentSources(client, media, userConfig, dynamicBaseUrl, publicToken)
     ]);
     const officialCandidates = officialResult.status === "fulfilled" ? officialResult.value : [];
     const indexerCandidates = indexerResult.status === "fulfilled" ? indexerResult.value : [];
     const easynewsDirectCandidates = easynewsResult.status === "fulfilled" ? easynewsResult.value : [];
     const newshostingCandidates = newshostingResult.status === "fulfilled" ? newshostingResult.value : [];
+    const torrentCandidates = torrentResult.status === "fulfilled" ? torrentResult.value : [];
     const externalMode = userConfig?.externalResultMode === "prechecked" ? "prechecked" : "direct";
     const pregrabCandidates = userConfig?.newshostingPrecheck === true
       ? [...indexerCandidates, ...newshostingCandidates]
@@ -587,7 +599,7 @@ async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, 
           ...newshostingCandidates
         ];
     
-    const candidates = dedupeCandidates([...officialCandidates, ...externalCandidates, ...easynewsDirectCandidates]);
+    const candidates = dedupeCandidates([...officialCandidates, ...externalCandidates, ...easynewsDirectCandidates, ...torrentCandidates]);
     const streams = formatStreams(candidates, dynamicBaseUrl, token);
     
     // Fallback if empty
@@ -678,9 +690,51 @@ app.get("/:token/health", async (request) => {
       easynewsDirectConfigured: Boolean(userConfig?.easynewsUsername && userConfig?.easynewsPassword),
       easynewsDirectEnabled: Boolean(userConfig?.easynewsEnabled !== false && userConfig?.easynewsUsername && userConfig?.easynewsPassword),
       newshostingDirectConfigured: Boolean(userConfig?.newshostingUsername && userConfig?.newshostingPassword),
-      newshostingDirectEnabled: Boolean(userConfig?.newshostingEnabled !== false && userConfig?.newshostingUsername && userConfig?.newshostingPassword)
+      newshostingDirectEnabled: Boolean(userConfig?.newshostingEnabled !== false && userConfig?.newshostingUsername && userConfig?.newshostingPassword),
+      deepbridLibraryEnabled: Boolean(userConfig?.deepbridLibraryEnabled !== false),
+      externalTorrents: Array.isArray(userConfig?.externalTorrents) ? userConfig.externalTorrents.length : 0
     }
   };
+});
+
+app.get("/:token/torrent/play/:payload", async (request, reply) => {
+  const { token, payload } = request.params as { token: string; payload: string };
+  try {
+    const userConfig = decodeConfig(token);
+    const apiKey = userConfig?.deepbridApiKey || process.env.DEEPBRID_API_KEY || "";
+    if (!apiKey) return reply.status(400).send("No API key");
+    const decoded = decodeJsonPayload(payload);
+    const client = new DeepbridClient(apiKey);
+    const torrent = normalizeTorrent(await client.getTorrentInfo(String(decoded.id), Number(userConfig?.torrentInfoTimeout || 12000) || 12000));
+    const link = selectTorrentLink(torrent.links);
+    if (!link) return reply.status(404).send("Torrent links unavailable.");
+    return reply.redirect(normalizePlayableUrl(link));
+  } catch (err) {
+    app.log.error(err);
+    return reply.status(500).send("Torrent playback unavailable.");
+  }
+});
+
+app.get("/:token/torrent/add/:payload", async (request, reply) => {
+  const { token, payload } = request.params as { token: string; payload: string };
+  try {
+    const userConfig = decodeConfig(token);
+    const apiKey = userConfig?.deepbridApiKey || process.env.DEEPBRID_API_KEY || "";
+    if (!apiKey) return reply.status(400).send("No API key");
+    const decoded = decodeJsonPayload(payload);
+    if (!decoded.magnet || !/^magnet:\?/i.test(String(decoded.magnet))) return reply.status(400).send("Invalid magnet");
+    const client = new DeepbridClient(apiKey);
+    const add = await client.addTorrentMagnet(String(decoded.magnet), Number(userConfig?.torrentAddTimeout || 25000) || 25000) as any;
+    const id = String(add?.id || "");
+    if (!id || Number(add?.error || 0) !== 0) return reply.status(502).send("Torrent add failed.");
+    const torrent = normalizeTorrent(await client.getTorrentInfo(id, Number(userConfig?.torrentInfoTimeout || 15000) || 15000));
+    const link = selectTorrentLink(torrent.links);
+    if (!link) return reply.status(202).send("Torrent added but not ready yet.");
+    return reply.redirect(normalizePlayableUrl(link));
+  } catch (err) {
+    app.log.error(err);
+    return reply.status(500).send("Torrent add unavailable.");
+  }
 });
 
 app.get("/:token/newshosting/nzb/:encodedId", async (request, reply) => {
