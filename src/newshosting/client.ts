@@ -9,6 +9,7 @@ export type NewshostingOptions = {
   ip?: string;
   port?: number;
   timeoutMs?: number;
+  maxNzbFiles?: number;
 };
 
 export type NewshostingResult = {
@@ -133,6 +134,7 @@ export class NewshostingClient {
       ip: options.ip || "81.171.93.8",
       port: options.port || 5598,
       timeoutMs: options.timeoutMs || 25000,
+      maxNzbFiles: options.maxNzbFiles || 160,
       username: options.username,
       password: options.password
     };
@@ -161,7 +163,7 @@ export class NewshostingClient {
       this.socket?.once("timeout", onTimeout);
     });
     await this.send("<login/>");
-    const xml = await decodeFrame(this.socket);
+    const xml = await decodeFrame(this.socket, this.options.timeoutMs);
     if (!/<login\b[^>]*\bvalid="true"/i.test(xml)) {
       throw new Error("newshosting_login_failed");
     }
@@ -174,19 +176,22 @@ export class NewshostingClient {
   async search(query: string, page = 1, perPage = 100): Promise<NewshostingSearchResponse> {
     const body = `<groups hits="true" page="${page}" per-page="${perPage}"><restrictions/><searchterm>${xmlEscape(query)}</searchterm><quality-index password-protected="false"/></groups>`;
     await this.send(body);
-    return parseGroups(await decodeFrame(this.socket!));
+    return parseGroups(await decodeFrame(this.socket!, this.options.timeoutMs));
   }
 
   async createNzb(index: string, scope: string, itemId: string): Promise<string> {
     await this.send(`<group><id index="${xmlEscape(index)}" scope="${xmlEscape(scope)}" item="${xmlEscape(itemId)}"/></group>`);
-    const groupXml = await decodeFrame(this.socket!);
+    const groupXml = await decodeFrame(this.socket!, this.options.timeoutMs);
     const group = parseGroupDetail(groupXml);
+    if (group.files.length > this.options.maxNzbFiles) {
+      throw new Error("newshosting_nzb_too_many_files");
+    }
     const fallbackAuthor = tagValue(groupXml, "author");
     const nzbFiles: NzbFile[] = [];
 
     for (const file of group.files) {
       await this.send(`<file><id index="${xmlEscape(index)}" scope="${xmlEscape(scope)}" item="${xmlEscape(itemId)}" num="${xmlEscape(file.num)}"/></file>`);
-      const detail = parseFileDetail(await decodeFrame(this.socket!), fallbackAuthor);
+      const detail = parseFileDetail(await decodeFrame(this.socket!, this.options.timeoutMs), fallbackAuthor);
       nzbFiles.push({
         name: file.name,
         timestamp: file.timestamp,

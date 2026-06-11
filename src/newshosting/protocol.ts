@@ -9,7 +9,7 @@ export function encodeFrame(xml: string): Buffer {
   return Buffer.concat([Buffer.from(`C${body.length}\r\n`, "ascii"), body]);
 }
 
-async function readExactly(stream: NodeJS.ReadableStream, size: number): Promise<Buffer> {
+async function readExactly(stream: NodeJS.ReadableStream, size: number, timeoutMs: number): Promise<Buffer> {
   const chunks: Buffer[] = [];
   let total = 0;
 
@@ -25,12 +25,15 @@ async function readExactly(stream: NodeJS.ReadableStream, size: number): Promise
       const onReadable = () => cleanup(resolve);
       const onError = (error: Error) => cleanup(() => reject(error));
       const onEnd = () => cleanup(() => reject(new Error("newshosting_stream_ended")));
+      const onTimeout = () => cleanup(() => reject(new Error("newshosting_read_timeout")));
       const cleanup = (done: () => void) => {
+        clearTimeout(timeout);
         stream.off("readable", onReadable);
         stream.off("error", onError);
         stream.off("end", onEnd);
         done();
       };
+      const timeout = setTimeout(onTimeout, timeoutMs);
       stream.once("readable", onReadable);
       stream.once("error", onError);
       stream.once("end", onEnd);
@@ -40,10 +43,10 @@ async function readExactly(stream: NodeJS.ReadableStream, size: number): Promise
   return Buffer.concat(chunks, total);
 }
 
-export async function decodeFrame(stream: NodeJS.ReadableStream): Promise<string> {
+export async function decodeFrame(stream: NodeJS.ReadableStream, timeoutMs = 25000): Promise<string> {
   const headerBytes: number[] = [];
   while (true) {
-    const byte = await readExactly(stream, 1);
+    const byte = await readExactly(stream, 1, timeoutMs);
     headerBytes.push(byte[0]);
     if (headerBytes.length >= 2 && headerBytes[headerBytes.length - 2] === 13 && headerBytes[headerBytes.length - 1] === 10) {
       break;
@@ -56,6 +59,6 @@ export async function decodeFrame(stream: NodeJS.ReadableStream): Promise<string
     throw new Error("newshosting_invalid_frame_length");
   }
 
-  const body = await readExactly(stream, bodyLength);
+  const body = await readExactly(stream, bodyLength, timeoutMs);
   return inflateSync(body.subarray(4)).toString("utf8");
 }

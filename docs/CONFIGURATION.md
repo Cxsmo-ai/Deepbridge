@@ -14,6 +14,7 @@ Deepbridge supports environment-level configuration and per-user web configurati
 | `NEWSHOSTING_SERVER_HOST` | `srv.aboutusenet.com` | TLS/SNI host for Newshosting connector access. |
 | `NEWSHOSTING_SERVER_IP` | `81.171.93.8` | Connector IP used by the built-in Newshosting client. |
 | `NEWSHOSTING_SERVER_PORT` | `5598` | Connector TCP port. |
+| `NEWSHOSTING_MAX_NZB_FILES` | `160` | Maximum file entries to expand into a generated Newshosting NZB before skipping the release. |
 | `NODE_ENV` | unset | Set to `production` for hosted deployments. |
 
 ## Web configuration page
@@ -34,7 +35,7 @@ Indexer URLs can be entered either as the service root or the Newznab API endpoi
 
 ## Built-in Newshosting
 
-Newshosting is configured in the dashboard as a built-in source, not as an external indexer. It does not need a Newznab API key. Deepbridge searches Newshosting in-process, exposes a same-server private NZB URL for each selected result, and submits that URL to Deepbrid during resolve/precheck.
+Newshosting is configured in the dashboard as a built-in source, not as an external indexer. It does not need a Newznab API key. Deepbridge searches Newshosting in-process, exposes a same-server private NZB URL for each selected result, and submits that URL to Deepbrid during resolve/precheck. Very large posts are skipped when they exceed the configured max NZB file count so a single oversized result cannot stall stream collection.
 
 Generated manifest URLs are private because they can contain the encoded Newshosting username/password.
 

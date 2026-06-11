@@ -51,7 +51,8 @@ function credentials(userConfig?: any) {
     password,
     host: String(userConfig?.newshostingHost || process.env.NEWSHOSTING_SERVER_HOST || "srv.aboutusenet.com"),
     ip: String(userConfig?.newshostingIp || process.env.NEWSHOSTING_SERVER_IP || "81.171.93.8"),
-    port: Number(userConfig?.newshostingPort || process.env.NEWSHOSTING_SERVER_PORT || 5598) || 5598
+    port: Number(userConfig?.newshostingPort || process.env.NEWSHOSTING_SERVER_PORT || 5598) || 5598,
+    maxNzbFiles: Number(userConfig?.newshostingMaxNzbFiles || process.env.NEWSHOSTING_MAX_NZB_FILES || 160) || 160
   };
 }
 
@@ -125,6 +126,20 @@ function isArchiveRelease(title: string): boolean {
   return /(?:^|[.\s_-])(?:rar|r\d{2}|7z(?:\.\d{3})?|zip|par2|sfv|nfo)(?:$|[.\s_-])/i.test(title);
 }
 
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMessage: string): Promise<T> {
+  let timeout: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(errorMessage)), timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
 export function decodeNewshostingNzbId(encoded: string): { index: string; scope: string; itemId: string; title?: string } {
   const parsed = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
   if (!parsed?.i || !parsed?.s || !parsed?.it) throw new Error("invalid_newshosting_nzb_id");
@@ -135,10 +150,16 @@ export async function createNewshostingNzb(encodedId: string, userConfig?: any):
   const creds = credentials(userConfig);
   if (!creds.enabled) throw new Error("newshosting_not_configured");
   const id = decodeNewshostingNzbId(encodedId);
-  const client = new NewshostingClient(creds);
+  const client = new NewshostingClient({
+    ...creds,
+    timeoutMs: Number(userConfig?.newshostingTimeout || userConfig?.indexerTimeout || 25000) || 25000
+  });
+  const timeoutMs = Number(userConfig?.newshostingTimeout || userConfig?.indexerTimeout || 25000) || 25000;
   try {
-    await client.connect();
-    return await client.createNzb(id.index, id.scope, id.itemId);
+    return await withTimeout((async () => {
+      await client.connect();
+      return await client.createNzb(id.index, id.scope, id.itemId);
+    })(), timeoutMs, "newshosting_nzb_timeout");
   } finally {
     client.close();
   }
@@ -178,7 +199,10 @@ export async function getNewshostingSources(
   stats.plannedSearches = queries.length;
   const seen = new Set<string>();
   const results: NewshostingResult[] = [];
-  const options: NewshostingOptions = { ...creds, timeoutMs: Number(userConfig?.newshostingTimeout || userConfig?.indexerTimeout || 25000) || 25000 };
+  const options: NewshostingOptions = {
+    ...creds,
+    timeoutMs: Number(userConfig?.newshostingTimeout || userConfig?.indexerTimeout || 25000) || 25000
+  };
 
   for (const query of queries) {
     const client = new NewshostingClient(options);

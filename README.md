@@ -122,6 +122,7 @@ Built-in Newshosting Source
   Newshosting Password
   Host / IP / Port
   Max Newshosting Results
+  Max NZB Files
 ```
 
 Newshosting behavior:
@@ -129,6 +130,7 @@ Newshosting behavior:
 - Deepbridge logs into Newshosting's connector protocol directly.
 - Search results are ranked against the requested movie or episode.
 - When Deepbrid needs an NZB, Deepbridge generates that NZB on the same addon server.
+- Oversized Newshosting posts are skipped when they exceed the configured max NZB file count.
 - Deepbrid receives an addon-hosted NZB URL; there is no separate Newznab API key.
 - Stream cards are labeled `Newshosting` when the result came from this built-in source.
 

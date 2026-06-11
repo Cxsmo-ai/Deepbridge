@@ -24,6 +24,7 @@ export interface UserConfig {
   newshostingIp?: string;
   newshostingPort?: number;
   newshostingMaxResults?: number;
+  newshostingMaxNzbFiles?: number;
   // Timeout overrides (milliseconds)
   officialTimeout?: number;
   resolveTimeout?: number;
