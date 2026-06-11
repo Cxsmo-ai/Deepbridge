@@ -1,7 +1,7 @@
 # Deepbridge
 
 <p align="center">
-  <strong>A polished Stremio addon for Deepbrid-powered streaming with official sources, built-in Easynews support, and pre-resolved external Usenet indexer results.</strong>
+  <strong>A polished Stremio addon for Deepbrid-powered streaming with official sources, built-in Easynews/Newshosting support, and pre-resolved external Usenet indexer results.</strong>
 </p>
 
 <p align="center">
@@ -58,7 +58,7 @@ docker run --rm \
 
 ## What is Deepbridge?
 
-Deepbridge is a self-hosted Stremio addon that bridges Stremio, Deepbrid, built-in Easynews, and optional Newznab-compatible Usenet indexers. It combines Deepbrid official streams, native Easynews results, and external indexer NZBs resolved through Deepbrid, then presents clean, ranked Stremio stream cards.
+Deepbridge is a self-hosted Stremio addon that bridges Stremio, Deepbrid, built-in Easynews, built-in Newshosting, and optional Newznab-compatible Usenet indexers. It combines Deepbrid official streams, native Easynews/Newshosting results, and external indexer NZBs resolved through Deepbrid, then presents clean, ranked Stremio stream cards.
 
 Deepbridge is built for people who want a simple addon URL, a clean configuration page, Docker-friendly deployment, and direct playback links from Deepbrid/myfast rather than proxying large video traffic through the addon server.
 
@@ -67,6 +67,8 @@ Deepbridge is built for people who want a simple addon URL, a clean configuratio
 - Deepbrid official stream support.
 - Built-in Easynews source configured directly in the Deepbridge dashboard.
 - Easynews direct fallback returns final Easynews CDN links when native Easynews resolution succeeds.
+- Built-in Newshosting source configured directly in the dashboard.
+- Newshosting runs inside Deepbridge, generates NZBs on demand, and submits them to Deepbrid without a separate indexer API key.
 - Optional external Usenet indexer support.
 - Direct external result mode: pre-adds/prechecks more indexer NZBs through Deepbrid before showing them.
 - External pregrab: indexer NZBs are submitted to Deepbrid before being shown as direct playback links.
@@ -107,6 +109,29 @@ Easynews behavior:
 
 External Newznab/Prowlarr/AltHub-style indexers are still fully supported and remain Deepbrid-resolved sources. They are configured separately in the `External Indexers` dashboard section.
 
+## Built-in Newshosting support
+
+Deepbridge includes Newshosting as an in-process source. You do not need to run or add a separate Newznab proxy for Newshosting.
+
+Configure Newshosting from the Deepbridge dashboard:
+
+```text
+Built-in Newshosting Source
+  Enable Newshosting
+  Newshosting Username
+  Newshosting Password
+  Host / IP / Port
+  Max Newshosting Results
+```
+
+Newshosting behavior:
+
+- Deepbridge logs into Newshosting's connector protocol directly.
+- Search results are ranked against the requested movie or episode.
+- When Deepbrid needs an NZB, Deepbridge generates that NZB on the same addon server.
+- Deepbrid receives an addon-hosted NZB URL; there is no separate Newznab API key.
+- Stream cards are labeled `Newshosting` when the result came from this built-in source.
+
 ## External result modes
 
 Deepbridge supports two external Newznab/AltHub result modes from the dashboard:
@@ -114,7 +139,7 @@ Deepbridge supports two external Newznab/AltHub result modes from the dashboard:
 - `Direct Deepbrid links` - recommended. Attempts more AltHub/Newznab candidates through Deepbrid and only shows streams after Deepbrid returns a direct playable URL.
 - `Strict prechecked` - faster/stricter. Attempts fewer candidates and only shows streams confirmed playable during the stream request.
 
-Both modes avoid exposing unresolved addon proxy links in Stremio results. External streams shown in Stremio are direct Deepbrid/myfast playback URLs. These modes apply to external indexers; the built-in Easynews source has its own dashboard credentials and direct Easynews resolution path.
+Both modes avoid exposing unresolved addon proxy links in Stremio results. External streams shown in Stremio are direct Deepbrid/myfast playback URLs. These modes apply to external indexers and built-in Newshosting; the built-in Easynews source has its own dashboard credentials and direct Easynews resolution path.
 
 ## Health checks
 

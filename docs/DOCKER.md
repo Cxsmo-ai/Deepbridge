@@ -76,6 +76,11 @@ Recommended production values:
 PORT=7000
 BASE_URL=https://deepbridge.example.com
 DEEPBRID_API_KEY=your_deepbrid_api_key_here
+NEWSHOSTING_USERNAME=
+NEWSHOSTING_PASSWORD=
+NEWSHOSTING_SERVER_HOST=srv.aboutusenet.com
+NEWSHOSTING_SERVER_IP=81.171.93.8
+NEWSHOSTING_SERVER_PORT=5598
 NODE_ENV=production
 ```
 

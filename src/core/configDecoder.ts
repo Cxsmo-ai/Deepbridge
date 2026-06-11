@@ -17,6 +17,13 @@ export interface UserConfig {
   easynewsUsername?: string;
   easynewsPassword?: string;
   easynewsMaxResults?: number;
+  newshostingEnabled?: boolean;
+  newshostingUsername?: string;
+  newshostingPassword?: string;
+  newshostingHost?: string;
+  newshostingIp?: string;
+  newshostingPort?: number;
+  newshostingMaxResults?: number;
   // Timeout overrides (milliseconds)
   officialTimeout?: number;
   resolveTimeout?: number;

@@ -9,6 +9,11 @@ Deepbridge supports environment-level configuration and per-user web configurati
 | `PORT` | `7000` | HTTP port inside Node.js/container. |
 | `BASE_URL` | request-derived/local | Public addon base URL. Recommended in production. |
 | `DEEPBRID_API_KEY` | empty | Optional fallback Deepbrid API key. |
+| `NEWSHOSTING_USERNAME` | empty | Optional global fallback Newshosting username. Per-link dashboard config can be used instead. |
+| `NEWSHOSTING_PASSWORD` | empty | Optional global fallback Newshosting password. Do not commit real values. |
+| `NEWSHOSTING_SERVER_HOST` | `srv.aboutusenet.com` | TLS/SNI host for Newshosting connector access. |
+| `NEWSHOSTING_SERVER_IP` | `81.171.93.8` | Connector IP used by the built-in Newshosting client. |
+| `NEWSHOSTING_SERVER_PORT` | `5598` | Connector TCP port. |
 | `NODE_ENV` | unset | Set to `production` for hosted deployments. |
 
 ## Web configuration page
@@ -27,6 +32,12 @@ External indexers should be Newznab-compatible. Deepbridge searches them with TV
 
 Indexer URLs can be entered either as the service root or the Newznab API endpoint. For example, both `https://indexer.example` and `https://indexer.example/api` are accepted; Deepbridge normalizes them before searching.
 
+## Built-in Newshosting
+
+Newshosting is configured in the dashboard as a built-in source, not as an external indexer. It does not need a Newznab API key. Deepbridge searches Newshosting in-process, exposes a same-server private NZB URL for each selected result, and submits that URL to Deepbrid during resolve/precheck.
+
+Generated manifest URLs are private because they can contain the encoded Newshosting username/password.
+
 ## External result mode
 
 The dashboard supports two external result modes:
@@ -44,7 +55,7 @@ Resolution-specific limits can control how many results appear for 2160p, 1080p,
 
 Use `/health` to check addon status, local resolve cache/in-flight counts, last Deepbrid add/precheck stats, sanitized per-indexer search stats, and fallback Deepbrid API status.
 
-Use `/<configuration-token>/health` to check the same diagnostics for a generated dashboard configuration without exposing API keys, indexer keys, raw NZB URLs, or final playback URLs. After a stream request, `cache.indexerSearch` shows planned searches, raw/deduped/selected item counts, candidate counts, archive skips, and resolution breakdowns per indexer host. `cache.deepbridAdd.bySource` shows how many candidates were attempted, became ready, failed, or were skipped per source.
+Use `/<configuration-token>/health` to check the same diagnostics for a generated dashboard configuration without exposing API keys, indexer keys, raw NZB URLs, or final playback URLs. After a stream request, `cache.indexerSearch` shows planned searches, raw/deduped/selected item counts, candidate counts, archive skips, and resolution breakdowns per indexer host. `cache.newshostingDirect` shows built-in Newshosting search counts. `cache.deepbridAdd.bySource` shows how many candidates were attempted, became ready, failed, or were skipped per source.
 
 ## Security note
 

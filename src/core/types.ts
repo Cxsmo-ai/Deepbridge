@@ -14,6 +14,7 @@ export type SourceCandidate = {
     | "nzbhydra"
     | "althub"
     | "easynews-direct"
+    | "newshosting-direct"
     | "manual-nzb";
 
   title: string;

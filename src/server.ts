@@ -11,6 +11,7 @@ import { getOfficialDeepbridSources } from "./deepbrid/officialAddon";
 import { formatStreams } from "./stremio/formatStreams";
 import { getIndexerSources, getLastIndexerSearchStats } from "./indexer/search";
 import { getEasynewsDirectSources, getLastEasynewsDirectStats } from "./easynews/direct";
+import { createNewshostingNzb, getLastNewshostingStats, getNewshostingSources } from "./newshosting/direct";
 import { decodeConfig } from "./core/configDecoder";
 import { dedupeCandidates } from "./core/releaseMatch";
 import { parseRelease } from "./core/parseRelease";
@@ -98,7 +99,8 @@ function cacheHealth() {
     },
     deepbridAdd: lastPregrabStats,
     indexerSearch: getLastIndexerSearchStats(),
-    easynewsDirect: getLastEasynewsDirectStats()
+    easynewsDirect: getLastEasynewsDirectStats(),
+    newshostingDirect: getLastNewshostingStats()
   };
 }
 
@@ -492,19 +494,23 @@ async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, 
     }
     const client = new DeepbridClient(apiKey);
 
-    const [officialResult, indexerResult, easynewsResult] = await Promise.allSettled([
+    const publicToken = token || "default_token";
+    const [officialResult, indexerResult, easynewsResult, newshostingResult] = await Promise.allSettled([
       getOfficialDeepbridSources(client, media, userConfig),
       getIndexerSources(client, media, userConfig),
-      getEasynewsDirectSources(media, userConfig)
+      getEasynewsDirectSources(media, userConfig),
+      getNewshostingSources(media, userConfig, dynamicBaseUrl, publicToken)
     ]);
     const officialCandidates = officialResult.status === "fulfilled" ? officialResult.value : [];
     const indexerCandidates = indexerResult.status === "fulfilled" ? indexerResult.value : [];
     const easynewsDirectCandidates = easynewsResult.status === "fulfilled" ? easynewsResult.value : [];
+    const newshostingCandidates = newshostingResult.status === "fulfilled" ? newshostingResult.value : [];
     const externalMode = userConfig?.externalResultMode === "prechecked" ? "prechecked" : "direct";
-    const readyIndexerCandidates = await pregrabExternalCandidates(client, indexerCandidates, externalMode, userConfig);
+    const readyIndexerCandidates = await pregrabExternalCandidates(client, [...indexerCandidates, ...newshostingCandidates], externalMode, userConfig);
     const externalCandidates = externalMode === "direct"
       ? [
           ...indexerCandidates.filter(candidate => !isEasynewsCandidate(candidate)),
+          ...newshostingCandidates,
           ...readyIndexerCandidates
         ]
       : readyIndexerCandidates;
@@ -598,9 +604,25 @@ app.get("/:token/health", async (request) => {
       externalResultMode: userConfig?.externalResultMode || "direct",
       indexers: Array.isArray(userConfig?.indexers) ? userConfig.indexers.length : 0,
       easynewsDirectConfigured: Boolean(userConfig?.easynewsUsername && userConfig?.easynewsPassword),
-      easynewsDirectEnabled: Boolean(userConfig?.easynewsEnabled !== false && userConfig?.easynewsUsername && userConfig?.easynewsPassword)
+      easynewsDirectEnabled: Boolean(userConfig?.easynewsEnabled !== false && userConfig?.easynewsUsername && userConfig?.easynewsPassword),
+      newshostingDirectConfigured: Boolean(userConfig?.newshostingUsername && userConfig?.newshostingPassword),
+      newshostingDirectEnabled: Boolean(userConfig?.newshostingEnabled !== false && userConfig?.newshostingUsername && userConfig?.newshostingPassword)
     }
   };
+});
+
+app.get("/:token/newshosting/nzb/:encodedId", async (request, reply) => {
+  const { token, encodedId } = request.params as { token: string, encodedId: string };
+  try {
+    const userConfig = decodeConfig(token);
+    const nzb = await createNewshostingNzb(encodedId, userConfig);
+    reply.header("Content-Type", "application/x-nzb; charset=utf-8");
+    reply.header("Content-Disposition", "inline; filename=\"newshosting.nzb\"");
+    return reply.send(nzb);
+  } catch (err) {
+    app.log.error(err);
+    return reply.status(404).send("NZB unavailable.");
+  }
 });
 
 app.get("/:token/resolve/:encodedNzbUrl", async (request, reply) => {

@@ -25,6 +25,7 @@ function encodeResolvePayload(candidate: SourceCandidate): string {
 function sourceLabel(candidate: SourceCandidate): string {
   if (candidate.origin === "deepbrid-official") return "Deepbrid Official";
   if (candidate.origin === "easynews-direct") return "Easynews Direct";
+  if (candidate.origin === "newshosting-direct") return "Newshosting";
   const displayMatch = candidate.displayName.match(/^\[([^\]]+)\]/);
   if (displayMatch) return displayMatch[1];
   return candidate.origin

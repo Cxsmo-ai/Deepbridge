@@ -388,6 +388,44 @@
     </div>
 
     <div style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; margin-bottom: 30px;">
+      <label style="font-size: 0.95rem; color: var(--text); margin-bottom: 10px; display: block;">Built-in Newshosting Source</label>
+      <div class="form-group" style="margin-bottom: 15px;">
+        <label>Enable Newshosting</label>
+        <select id="newshostingEnabled">
+          <option value="true" selected>Enabled when credentials are provided</option>
+          <option value="false">Disabled</option>
+        </select>
+        <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 5px;">Newshosting runs inside this same Deepbridge addon. It searches Newshosting directly, generates NZBs internally, and submits them to Deepbrid without a separate indexer API key.</p>
+      </div>
+      <div class="form-group" style="margin-bottom: 15px;">
+        <label>Newshosting Username</label>
+        <input type="text" id="newshostingUsername" placeholder="Optional Newshosting username">
+      </div>
+      <div class="form-group" style="margin-bottom: 15px;">
+        <label>Newshosting Password</label>
+        <input type="password" id="newshostingPassword" placeholder="Optional Newshosting password">
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+        <div class="form-group" style="margin-bottom: 0;">
+          <label style="font-size: 0.8rem;">Host</label>
+          <input type="text" id="newshostingHost" value="srv.aboutusenet.com" placeholder="srv.aboutusenet.com" style="padding: 8px; font-size: 0.9rem;">
+        </div>
+        <div class="form-group" style="margin-bottom: 0;">
+          <label style="font-size: 0.8rem;">IP</label>
+          <input type="text" id="newshostingIp" value="81.171.93.8" placeholder="81.171.93.8" style="padding: 8px; font-size: 0.9rem;">
+        </div>
+        <div class="form-group" style="margin-bottom: 0;">
+          <label style="font-size: 0.8rem;">Port</label>
+          <input type="number" id="newshostingPort" value="5598" min="1" max="65535" step="1" style="padding: 8px; font-size: 0.9rem;">
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom: 0; margin-top: 15px;">
+        <label>Max Newshosting Results</label>
+        <input type="text" id="newshostingMaxResults" value="12" placeholder="1-40" style="padding: 8px; font-size: 0.9rem;">
+      </div>
+    </div>
+
+    <div style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; margin-bottom: 30px;">
       <label style="font-size: 0.95rem; color: var(--text); margin-bottom: 10px; display: block;">Official Deepbrid Resolution Limits</label>
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
         <div class="form-group" style="margin-bottom: 0;">
@@ -434,7 +472,7 @@
     <div style="margin-top: 30px; margin-bottom: 10px; border-bottom: 1px solid var(--panel-border); padding-bottom: 10px;">
       <label style="font-size: 1.1rem; color: var(--text);">External Indexers</label>
     </div>
-    <p class="indexer-help">Optional. Add Newznab-compatible indexers if you want extra Deepbrid-resolved sources. Easynews is built into Deepbridge above and does not need to be added here.</p>
+    <p class="indexer-help">Optional. Add Newznab-compatible indexers if you want extra Deepbrid-resolved sources. Easynews and Newshosting are built into Deepbridge above and do not need to be added here.</p>
 
     <div id="indexerContainer" class="indexer-list">
       <!-- Indexers will be dynamically added here -->
@@ -660,6 +698,13 @@
       easynewsUsername: document.getElementById('easynewsUsername').value.trim(),
       easynewsPassword: document.getElementById('easynewsPassword').value,
       easynewsMaxResults: Math.min(Math.max(parseInt(document.getElementById('easynewsMaxResults').value, 10) || 4, 1), 8),
+      newshostingEnabled: document.getElementById('newshostingEnabled').value === 'true',
+      newshostingUsername: document.getElementById('newshostingUsername').value.trim(),
+      newshostingPassword: document.getElementById('newshostingPassword').value,
+      newshostingHost: document.getElementById('newshostingHost').value.trim() || 'srv.aboutusenet.com',
+      newshostingIp: document.getElementById('newshostingIp').value.trim() || '81.171.93.8',
+      newshostingPort: parseInt(document.getElementById('newshostingPort').value, 10) || 5598,
+      newshostingMaxResults: Math.min(Math.max(parseInt(document.getElementById('newshostingMaxResults').value, 10) || 12, 1), 40),
       officialTimeout: parseInt(document.getElementById('officialTimeout').value, 10) || 0,
       resolveTimeout: parseInt(document.getElementById('resolveTimeout').value, 10) || 0,
       indexerTimeout: parseInt(document.getElementById('indexerTimeout').value, 10) || 0,
