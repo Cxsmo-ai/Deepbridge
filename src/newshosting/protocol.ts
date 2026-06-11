@@ -1,5 +1,7 @@
 import { inflateSync, deflateSync } from "zlib";
 
+const maxFrameBytes = Number(process.env.NEWSHOSTING_MAX_FRAME_BYTES || 16 * 1024 * 1024) || 16 * 1024 * 1024;
+
 export function encodeFrame(xml: string): Buffer {
   const xmlBytes = Buffer.from(xml, "utf8");
   const compressed = deflateSync(xmlBytes);
@@ -57,6 +59,9 @@ export async function decodeFrame(stream: NodeJS.ReadableStream, timeoutMs = 250
   const bodyLength = Number.parseInt(header.startsWith("C") ? header.slice(1) : header, 10);
   if (!Number.isFinite(bodyLength) || bodyLength <= 4) {
     throw new Error("newshosting_invalid_frame_length");
+  }
+  if (bodyLength > maxFrameBytes) {
+    throw new Error("newshosting_frame_too_large");
   }
 
   const body = await readExactly(stream, bodyLength, timeoutMs);
