@@ -200,11 +200,17 @@ export async function createNewshostingNzb(encodedId: string, userConfig?: any):
   if (id.files && id.files > creds.maxNzbFiles) {
     throw new Error("newshosting_nzb_too_many_files");
   }
+  const timeoutMs = Number(
+    userConfig?.newshostingNzbTimeout
+    || userConfig?.newshostingTimeout
+    || userConfig?.resolveTimeout
+    || userConfig?.indexerTimeout
+    || 30000
+  ) || 30000;
   const client = new NewshostingClient({
     ...creds,
-    timeoutMs: Number(userConfig?.newshostingTimeout || userConfig?.indexerTimeout || 25000) || 25000
+    timeoutMs
   });
-  const timeoutMs = Number(userConfig?.newshostingTimeout || userConfig?.indexerTimeout || 25000) || 25000;
   try {
     return await withTimeout((async () => {
       await client.connect();

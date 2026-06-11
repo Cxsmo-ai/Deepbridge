@@ -26,6 +26,7 @@ export interface UserConfig {
   newshostingMaxResults?: number;
   newshostingMaxNzbFiles?: number;
   newshostingSearchTimeout?: number;
+  newshostingNzbTimeout?: number;
   newshostingPrecheck?: boolean;
   // Timeout overrides (milliseconds)
   officialTimeout?: number;

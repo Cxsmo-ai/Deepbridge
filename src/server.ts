@@ -107,7 +107,13 @@ function cacheHealth() {
 
 function createNewshostingNzbIsolated(encodedId: string, userConfig: any): Promise<string> {
   const timeoutMs = Math.min(
-    Math.max(Number(userConfig?.newshostingTimeout || userConfig?.indexerTimeout || 25000) || 25000, 1000),
+    Math.max(Number(
+      userConfig?.newshostingNzbTimeout
+      || userConfig?.newshostingTimeout
+      || userConfig?.resolveTimeout
+      || userConfig?.indexerTimeout
+      || 30000
+    ) || 30000, 1000),
     60000
   );
   const workerPath = path.join(__dirname, "newshosting", "nzbWorker.js");
