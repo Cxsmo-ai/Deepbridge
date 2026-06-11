@@ -65,5 +65,9 @@ export async function decodeFrame(stream: NodeJS.ReadableStream, timeoutMs = 250
   }
 
   const body = await readExactly(stream, bodyLength, timeoutMs);
+  const uncompressedLength = body.readUInt32BE(0);
+  if (uncompressedLength > maxFrameBytes) {
+    throw new Error("newshosting_frame_too_large");
+  }
   return inflateSync(body.subarray(4)).toString("utf8");
 }
