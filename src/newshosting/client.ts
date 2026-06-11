@@ -191,6 +191,9 @@ export class NewshostingClient {
 
     for (const file of group.files) {
       await this.send(`<file><id index="${xmlEscape(index)}" scope="${xmlEscape(scope)}" item="${xmlEscape(itemId)}" num="${xmlEscape(file.num)}"/></file>`);
+    }
+
+    for (const file of group.files) {
       const detail = parseFileDetail(await decodeFrame(this.socket!, this.options.timeoutMs), fallbackAuthor);
       nzbFiles.push({
         name: file.name,
