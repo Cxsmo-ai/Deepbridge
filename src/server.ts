@@ -4,6 +4,7 @@ import fastifyFormbody from "@fastify/formbody";
 import fastifyCors from "@fastify/cors";
 import path from "path";
 import dotenv from "dotenv";
+import { spawn } from "child_process";
 
 import { manifest } from "./stremio/manifest";
 import { DeepbridClient, MediaRequest } from "./deepbrid/apiClient";
@@ -11,7 +12,7 @@ import { getOfficialDeepbridSources } from "./deepbrid/officialAddon";
 import { formatStreams } from "./stremio/formatStreams";
 import { getIndexerSources, getLastIndexerSearchStats } from "./indexer/search";
 import { getEasynewsDirectSources, getLastEasynewsDirectStats } from "./easynews/direct";
-import { createNewshostingNzb, getLastNewshostingStats, getNewshostingSources } from "./newshosting/direct";
+import { getLastNewshostingStats, getNewshostingSources } from "./newshosting/direct";
 import { decodeConfig } from "./core/configDecoder";
 import { dedupeCandidates } from "./core/releaseMatch";
 import { parseRelease } from "./core/parseRelease";
@@ -102,6 +103,65 @@ function cacheHealth() {
     easynewsDirect: getLastEasynewsDirectStats(),
     newshostingDirect: getLastNewshostingStats()
   };
+}
+
+function createNewshostingNzbIsolated(encodedId: string, userConfig: any): Promise<string> {
+  const timeoutMs = Math.min(
+    Math.max(Number(userConfig?.newshostingTimeout || userConfig?.indexerTimeout || 25000) || 25000, 1000),
+    60000
+  );
+  const workerPath = path.join(__dirname, "newshosting", "nzbWorker.js");
+  const maxOutputBytes = 64 * 1024 * 1024;
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [workerPath], {
+      stdio: ["pipe", "pipe", "pipe"],
+      env: process.env
+    });
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+    let stdoutBytes = 0;
+    let settled = false;
+
+    const finish = (error?: Error, value?: string) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (error) {
+        child.kill("SIGKILL");
+        reject(error);
+        return;
+      }
+      resolve(value || "");
+    };
+
+    const timeout = setTimeout(() => {
+      finish(new Error("newshosting_nzb_timeout"));
+    }, timeoutMs);
+
+    child.stdout.on("data", chunk => {
+      const buffer = Buffer.from(chunk);
+      stdoutBytes += buffer.length;
+      if (stdoutBytes > maxOutputBytes) {
+        finish(new Error("newshosting_nzb_too_large"));
+        return;
+      }
+      stdout.push(buffer);
+    });
+    child.stderr.on("data", chunk => stderr.push(Buffer.from(chunk)));
+    child.on("error", error => finish(error));
+    child.on("close", code => {
+      if (settled) return;
+      if (code === 0) {
+        finish(undefined, Buffer.concat(stdout).toString("utf8"));
+        return;
+      }
+      const message = Buffer.concat(stderr).toString("utf8").trim() || "newshosting_nzb_failed";
+      finish(new Error(message.split(/\r?\n/).pop() || "newshosting_nzb_failed"));
+    });
+
+    child.stdin.end(JSON.stringify({ encodedId, userConfig }));
+  });
 }
 
 function downloadsCount(data: any): number | undefined {
@@ -615,7 +675,7 @@ app.get("/:token/newshosting/nzb/:encodedId", async (request, reply) => {
   const { token, encodedId } = request.params as { token: string, encodedId: string };
   try {
     const userConfig = decodeConfig(token);
-    const nzb = await createNewshostingNzb(encodedId, userConfig);
+    const nzb = await createNewshostingNzbIsolated(encodedId, userConfig);
     reply.header("Content-Type", "application/x-nzb; charset=utf-8");
     reply.header("Content-Disposition", "inline; filename=\"newshosting.nzb\"");
     return reply.send(nzb);
