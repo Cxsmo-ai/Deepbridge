@@ -16,6 +16,7 @@ type UpstreamStats = {
   directCandidates: number;
   magnetCandidates: number;
   skippedNeedsAdd: number;
+  skippedP2p: number;
   errors: Record<string, number>;
 };
 
@@ -30,6 +31,7 @@ let lastUpstreamStats: UpstreamStats = {
   directCandidates: 0,
   magnetCandidates: 0,
   skippedNeedsAdd: 0,
+  skippedP2p: 0,
   errors: {}
 };
 
@@ -66,6 +68,17 @@ function directUrlFromStream(stream: any): string | undefined {
   return url;
 }
 
+function isP2pTorrentStream(stream: any, url?: string): boolean {
+  const haystack = [
+    stream?.name,
+    stream?.title,
+    stream?.description,
+    stream?.behaviorHints?.filename,
+    url
+  ].map(value => String(value || "")).join("\n");
+  return /\bP2P\b|☁️|peer|seeders?|\/p\//i.test(haystack);
+}
+
 function encodePayload(payload: any): string {
   return Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
 }
@@ -91,6 +104,7 @@ export async function getUpstreamAddonSources(media: MediaRequest, userConfig: a
     directCandidates: 0,
     magnetCandidates: 0,
     skippedNeedsAdd: 0,
+    skippedP2p: 0,
     errors: {}
   };
   const candidates: SourceCandidate[] = [];
@@ -109,6 +123,10 @@ export async function getUpstreamAddonSources(media: MediaRequest, userConfig: a
       for (const stream of streams.slice(0, maxResults)) {
         const directUrl = directUrlFromStream(stream);
         const magnet = magnetFromStream(stream);
+        if (isP2pTorrentStream(stream, directUrl)) {
+          stats.skippedP2p++;
+          continue;
+        }
         if (directUrl) {
           const title = titleFromStream(stream, name);
           const parsed = parseRelease(title);

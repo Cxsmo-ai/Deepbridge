@@ -45,9 +45,9 @@ Deepbridge can show ready torrents already present in your Deepbrid torrent libr
 
 External magnet links can be added in the dashboard, one per line. They are not searched like a tracker; they are static magnets that Deepbridge adds to Deepbrid only when opened.
 
-Upstream Stremio addon URLs can also be added, one per line. Deepbridge calls their standard `/stream/{type}/{id}.json` endpoint. Direct HTTP streams are shown with the upstream addon name, while `magnet:` and `infoHash` streams are skipped when `directLinksOnly` is enabled so they cannot consume Deepbrid torrent library slots. Disable direct-links-only only if you intentionally want Deepbridge to expose on-demand `/torrent/add` routes.
+Upstream Stremio addon URLs can also be added, one per line. Deepbridge calls their standard `/stream/{type}/{id}.json` endpoint. Cached/direct service streams are shown with the upstream addon name, while P2P/torrent streams, `magnet:` streams, and `infoHash` streams are skipped when `directLinksOnly` is enabled. Disable direct-links-only only if you intentionally want Deepbridge to expose on-demand `/torrent/add` routes.
 
-The dashboard pre-fills a Meteor P2P manifest URL. Meteor streams are labeled separately from `Deepbrid Library`; `Deepbrid Library` means the item was already in your Deepbrid torrent library, while Meteor entries are upstream addon/P2P streams and do not use Deepbrid library slots in direct-links-only mode.
+`Deepbrid Library` means the item was already in your Deepbrid torrent library. Upstream addon entries are labeled separately and are blocked when they look like P2P/torrent playback.
 
 ## External result mode
 
