@@ -13,6 +13,9 @@ type UpstreamStats = {
   failed: number;
   rawStreams: number;
   candidates: number;
+  directCandidates: number;
+  magnetCandidates: number;
+  skippedNeedsAdd: number;
   errors: Record<string, number>;
 };
 
@@ -24,6 +27,9 @@ let lastUpstreamStats: UpstreamStats = {
   failed: 0,
   rawStreams: 0,
   candidates: 0,
+  directCandidates: 0,
+  magnetCandidates: 0,
+  skippedNeedsAdd: 0,
   errors: {}
 };
 
@@ -53,6 +59,13 @@ function magnetFromStream(stream: any): string | undefined {
   return undefined;
 }
 
+function directUrlFromStream(stream: any): string | undefined {
+  const url = String(stream?.url || stream?.externalUrl || "").trim();
+  if (!/^https?:\/\//i.test(url)) return undefined;
+  if (/^magnet:\?/i.test(url)) return undefined;
+  return url;
+}
+
 function encodePayload(payload: any): string {
   return Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
 }
@@ -63,19 +76,7 @@ function titleFromStream(stream: any, fallback: string): string {
 
 export async function getUpstreamAddonSources(media: MediaRequest, userConfig: any, baseUrl: string, token: string): Promise<SourceCandidate[]> {
   const startedAt = Date.now();
-  if (userConfig?.directLinksOnly !== false) {
-    lastUpstreamStats = {
-      startedAt: new Date(startedAt).toISOString(),
-      finishedAt: new Date().toISOString(),
-      configured: Array.isArray(userConfig?.stremioAddons) ? userConfig.stremioAddons.length : 0,
-      fulfilled: 0,
-      failed: 0,
-      rawStreams: 0,
-      candidates: 0,
-      errors: {}
-    };
-    return [];
-  }
+  const directLinksOnly = userConfig?.directLinksOnly !== false;
   const addons = Array.isArray(userConfig?.stremioAddons)
     ? userConfig.stremioAddons.filter((addon: any) => addon?.enabled !== false && addon?.url)
     : [];
@@ -87,6 +88,9 @@ export async function getUpstreamAddonSources(media: MediaRequest, userConfig: a
     failed: 0,
     rawStreams: 0,
     candidates: 0,
+    directCandidates: 0,
+    magnetCandidates: 0,
+    skippedNeedsAdd: 0,
     errors: {}
   };
   const candidates: SourceCandidate[] = [];
@@ -103,8 +107,48 @@ export async function getUpstreamAddonSources(media: MediaRequest, userConfig: a
       stats.fulfilled++;
       stats.rawStreams += streams.length;
       for (const stream of streams.slice(0, maxResults)) {
+        const directUrl = directUrlFromStream(stream);
         const magnet = magnetFromStream(stream);
+        if (directUrl) {
+          const title = titleFromStream(stream, name);
+          const parsed = parseRelease(title);
+          candidates.push({
+            id: nanoid(),
+            mediaType: media.type,
+            imdbId: media.imdbId,
+            season: media.season,
+            episode: media.episode,
+            mediaKey: makeMediaKey(media),
+            origin: "stremio-addon-torrent",
+            title,
+            displayName: `[${name} Direct]`,
+            status: "ready",
+            playableUrl: directUrl,
+            resolution: parsed.resolution,
+            quality: parsed.quality,
+            codec: parsed.codec,
+            hdr: parsed.hdr,
+            audio: parsed.audio,
+            releaseGroup: parsed.releaseGroup,
+            normalizedTitle: parsed.normalizedTitle,
+            parsedSeason: parsed.season,
+            parsedEpisode: parsed.episode,
+            absoluteEpisode: parsed.absoluteEpisode,
+            seasonPack: parsed.seasonPack,
+            score: 3350,
+            createdAt: new Date().toISOString()
+          });
+          stats.candidates++;
+          stats.directCandidates++;
+          continue;
+        }
+
         if (!magnet) continue;
+        stats.magnetCandidates++;
+        if (directLinksOnly) {
+          stats.skippedNeedsAdd++;
+          continue;
+        }
         const title = titleFromStream(stream, name);
         const parsed = parseRelease(title);
         const payload = encodePayload({ magnet, title, season: media.season, episode: media.episode, addon: name });

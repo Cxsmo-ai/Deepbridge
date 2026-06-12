@@ -28,7 +28,10 @@ function sourceLabel(candidate: SourceCandidate): string {
   if (candidate.origin === "newshosting-direct") return "Newshosting";
   if (candidate.origin === "deepbrid-torrent-library") return "Deepbrid Library";
   if (candidate.origin === "external-torrent") return "External Torrent";
-  if (candidate.origin === "stremio-addon-torrent") return "Stremio Addon";
+  if (candidate.origin === "stremio-addon-torrent") {
+    const displayMatch = candidate.displayName.match(/^\[([^\]]+)\]/);
+    return displayMatch?.[1] || "Stremio Addon";
+  }
   const displayMatch = candidate.displayName.match(/^\[([^\]]+)\]/);
   if (displayMatch) return displayMatch[1];
   return candidate.origin
@@ -70,6 +73,8 @@ export function formatStreams(candidates: SourceCandidate[], baseUrl: string, to
         thirdLine += " ⚡ Ready";
       } else if (candidate.origin === "easynews-direct") {
         thirdLine += " ✅ Direct CDN";
+      } else if (candidate.origin === "stremio-addon-torrent") {
+        thirdLine += " ✅ Direct";
       } else {
         thirdLine += " ✅ Deepbrid";
       }
