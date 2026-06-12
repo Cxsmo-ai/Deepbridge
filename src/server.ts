@@ -471,6 +471,33 @@ function isEasynewsCandidate(candidate: SourceCandidate): boolean {
   return sourceKey(candidate).toLowerCase().includes("easynews");
 }
 
+function interleaveCandidatesBySource(candidates: SourceCandidate[], limit: number): SourceCandidate[] {
+  const grouped = new Map<string, SourceCandidate[]>();
+  for (const candidate of candidates) {
+    const key = sourceKey(candidate).toLowerCase();
+    const group = grouped.get(key) || [];
+    group.push(candidate);
+    grouped.set(key, group);
+  }
+
+  const groups = Array.from(grouped.values());
+  const selected: SourceCandidate[] = [];
+  let round = 0;
+  while (selected.length < limit) {
+    let added = false;
+    for (const group of groups) {
+      const candidate = group[round];
+      if (!candidate) continue;
+      selected.push(candidate);
+      added = true;
+      if (selected.length >= limit) break;
+    }
+    if (!added) break;
+    round++;
+  }
+  return selected;
+}
+
 async function pregrabExternalCandidates(client: DeepbridClient, candidates: SourceCandidate[], mode: "direct" | "prechecked" = "direct", userConfig?: any, requestBaseUrl?: string): Promise<SourceCandidate[]> {
   const startedAt = Date.now();
   const directMode = mode === "direct";
@@ -483,7 +510,7 @@ async function pregrabExternalCandidates(client: DeepbridClient, candidates: Sou
   const externalCandidates = directMode
     ? [
         ...sortedCandidates.filter(isEasynewsCandidate).slice(0, 2),
-        ...sortedCandidates.filter(candidate => !isEasynewsCandidate(candidate)).slice(0, maxAttempts - 2)
+        ...interleaveCandidatesBySource(sortedCandidates.filter(candidate => !isEasynewsCandidate(candidate)), maxAttempts - 2)
       ]
     : sortedCandidates.slice(0, maxAttempts);
   const readyCandidates: SourceCandidate[] = [];
