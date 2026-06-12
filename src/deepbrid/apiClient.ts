@@ -81,7 +81,16 @@ export class DeepbridClient {
       body: new URLSearchParams({ nzb_url: nzbUrl }).toString(),
       signal: AbortSignal.timeout(timeoutMs)
     });
-    return await res.body.json();
+    const text = await res.body.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      return {
+        error: 1,
+        statusCode: res.statusCode,
+        message: text.slice(0, 240) || `deepbrid_usenet_http_${res.statusCode}`
+      };
+    }
   }
 
   async addTorrentMagnet(magnet: string, timeoutMs = 25000) {

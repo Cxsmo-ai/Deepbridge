@@ -5,6 +5,7 @@ import fastifyCors from "@fastify/cors";
 import path from "path";
 import dotenv from "dotenv";
 import { spawn } from "child_process";
+import { nanoid } from "nanoid";
 
 import { manifest } from "./stremio/manifest";
 import { DeepbridClient, MediaRequest } from "./deepbrid/apiClient";
@@ -73,6 +74,7 @@ type ResolvePayload = {
 
 const resolveCache = new Map<string, { url: string; expiresAt: number }>();
 const resolveInflight = new Map<string, Promise<string>>();
+const newshostingNzbCache = new Map<string, { nzb: string; expiresAt: number }>();
 let lastPregrabStats = {
   mode: "direct",
   startedAt: "",
@@ -94,11 +96,19 @@ let lastPregrabStats = {
 const resolveTtlMs = 0;
 
 function cacheHealth() {
+  const now = Date.now();
+  for (const [key, value] of newshostingNzbCache.entries()) {
+    if (value.expiresAt <= now) newshostingNzbCache.delete(key);
+  }
   return {
     resolve: {
       entries: resolveCache.size,
       inflight: resolveInflight.size,
       ttlMs: resolveTtlMs
+    },
+    newshostingNzb: {
+      entries: newshostingNzbCache.size,
+      ttlMs: 10 * 60 * 1000
     },
     deepbridAdd: lastPregrabStats,
     indexerSearch: getLastIndexerSearchStats(),
@@ -114,10 +124,8 @@ function createNewshostingNzbIsolated(encodedId: string, userConfig: any): Promi
     Math.max(Number(
       userConfig?.newshostingNzbTimeout
       || userConfig?.newshostingTimeout
-      || userConfig?.resolveTimeout
-      || userConfig?.indexerTimeout
-      || 30000
-    ) || 30000, 1000),
+      || 45000
+    ) || 45000, 1000),
     60000
   );
   const workerPath = path.join(__dirname, "newshosting", "nzbWorker.js");
@@ -258,6 +266,33 @@ function decodeResolvePayload(encoded: string): ResolvePayload {
   } catch(e) {
   }
   return { nzbUrl: decoded };
+}
+
+function newshostingEncodedIdFromUrl(url: string): string | undefined {
+  try {
+    const parsed = new URL(url);
+    const match = parsed.pathname.match(/\/newshosting\/nzb\/([^/]+)$/);
+    return match?.[1] ? decodeURIComponent(match[1]) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function prepareNzbUrlForDeepbrid(payload: ResolvePayload, userConfig: any, requestBaseUrl: string): Promise<ResolvePayload> {
+  const encodedId = newshostingEncodedIdFromUrl(payload.nzbUrl);
+  if (!encodedId) return payload;
+
+  const nzb = await createNewshostingNzbIsolated(encodedId, userConfig);
+  const cacheId = nanoid();
+  newshostingNzbCache.set(cacheId, {
+    nzb,
+    expiresAt: Date.now() + 10 * 60 * 1000
+  });
+
+  return {
+    ...payload,
+    nzbUrl: `${requestBaseUrl.replace(/\/+$/, "")}/newshosting/cached/${cacheId}.nzb`
+  };
 }
 
 function decodeJsonPayload(encoded: string): any {
@@ -408,6 +443,13 @@ async function resolveNzbToPlayableUrl(client: DeepbridClient, payload: ResolveP
   }
 }
 
+async function resolvePreparedNzbToPlayableUrl(client: DeepbridClient, payload: ResolvePayload, addTimeoutMs = 25000, userConfig?: any, requestBaseUrl?: string): Promise<string> {
+  const preparedPayload = requestBaseUrl
+    ? await prepareNzbUrlForDeepbrid(payload, userConfig, requestBaseUrl)
+    : payload;
+  return resolveNzbToPlayableUrl(client, preparedPayload, addTimeoutMs);
+}
+
 function candidateToResolvePayload(candidate: SourceCandidate): ResolvePayload | null {
   if (!candidate.nzbUrl) return null;
   return {
@@ -429,7 +471,7 @@ function isEasynewsCandidate(candidate: SourceCandidate): boolean {
   return sourceKey(candidate).toLowerCase().includes("easynews");
 }
 
-async function pregrabExternalCandidates(client: DeepbridClient, candidates: SourceCandidate[], mode: "direct" | "prechecked" = "direct", userConfig?: any): Promise<SourceCandidate[]> {
+async function pregrabExternalCandidates(client: DeepbridClient, candidates: SourceCandidate[], mode: "direct" | "prechecked" = "direct", userConfig?: any, requestBaseUrl?: string): Promise<SourceCandidate[]> {
   const startedAt = Date.now();
   const directMode = mode === "direct";
   const deadlineMs = directMode ? 22000 : 22000;
@@ -491,7 +533,7 @@ async function pregrabExternalCandidates(client: DeepbridClient, candidates: Sou
       try {
         stats.attempted++;
         sourceStats(candidate).attempted++;
-        const playableUrl = await resolveNzbToPlayableUrl(client, payload, addTimeoutFor(candidate));
+        const playableUrl = await resolvePreparedNzbToPlayableUrl(client, payload, addTimeoutFor(candidate), userConfig, requestBaseUrl);
         if (isArchiveUrl(playableUrl)) {
           stats.skippedArchives++;
           sourceStats(candidate).skipped++;
@@ -591,7 +633,7 @@ async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, 
     const pregrabCandidates = userConfig?.newshostingPrecheck === true
       ? [...indexerCandidates, ...newshostingCandidates]
       : indexerCandidates;
-    const readyIndexerCandidates = await pregrabExternalCandidates(client, pregrabCandidates, externalMode, userConfig);
+    const readyIndexerCandidates = await pregrabExternalCandidates(client, pregrabCandidates, externalMode, userConfig, dynamicBaseUrl);
     const externalCandidates = externalMode === "direct"
       ? [
           ...indexerCandidates.filter(candidate => !isEasynewsCandidate(candidate)),
@@ -756,6 +798,19 @@ app.get("/:token/newshosting/nzb/:encodedId", async (request, reply) => {
   }
 });
 
+app.get("/newshosting/cached/:cacheId", async (request, reply) => {
+  const { cacheId } = request.params as { cacheId: string };
+  const normalizedId = cacheId.replace(/\.nzb$/i, "");
+  const entry = newshostingNzbCache.get(normalizedId);
+  if (!entry || entry.expiresAt <= Date.now()) {
+    newshostingNzbCache.delete(normalizedId);
+    return reply.status(404).send("NZB expired.");
+  }
+  reply.header("Content-Type", "application/x-nzb; charset=utf-8");
+  reply.header("Content-Disposition", "inline; filename=\"newshosting.nzb\"");
+  return reply.send(entry.nzb);
+});
+
 app.get("/:token/resolve/:encodedNzbUrl", async (request, reply) => {
   const { token, encodedNzbUrl } = request.params as { token: string, encodedNzbUrl: string };
   
@@ -770,7 +825,13 @@ app.get("/:token/resolve/:encodedNzbUrl", async (request, reply) => {
     }
 
     const client = new DeepbridClient(apiKey);
-    const playableUrl = await resolveNzbToPlayableUrl(client, payload);
+    const playableUrl = await resolvePreparedNzbToPlayableUrl(
+      client,
+      payload,
+      Number(userConfig?.resolveTimeout || 25000) || 25000,
+      userConfig,
+      getRequestBaseUrl(request)
+    );
     return reply.redirect(playableUrl);
   } catch (err) {
     app.log.error(err);
