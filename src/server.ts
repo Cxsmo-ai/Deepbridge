@@ -405,6 +405,13 @@ function isArchiveUrl(url: string): boolean {
   }
 }
 
+function isArchiveFile(file: any): boolean {
+  const title = fileTitle(file);
+  const downloadUrl = fileDownloadUrl(file) || "";
+  return /(?:^|[.\s_-])(?:rar|r\d{2}|7z(?:\.\d{3})?|zip|par2|sfv|nfo)(?:$|[.\s_-])/i.test(title)
+    || isArchiveUrl(downloadUrl);
+}
+
 function selectPlayableFile(files: any[], payload: ResolvePayload): any {
   const playableFiles = files
     .filter(file => fileDownloadUrl(file))
@@ -483,6 +490,7 @@ function deepbridAddErrorMessage(addData: any): string {
 
 function deepbridAddErrorCategory(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error || "unknown");
+  if (/archive/i.test(message)) return "archive_parts";
   if (/timeout|aborted/i.test(message)) return "timeout";
   if (/internal server error|http_5|statusCode\":5/i.test(message)) return "deepbrid_5xx";
   if (/not found|http_404|statusCode\":404/i.test(message)) return "fetch_404";
@@ -505,6 +513,10 @@ async function resolveNzbToPlayableUrl(client: DeepbridClient, payload: ResolveP
     
     if (addData.error || files.length === 0) {
       throw new Error(deepbridAddErrorMessage(addData));
+    }
+
+    if (files.length > 0 && files.every(isArchiveFile)) {
+      throw new Error("archive_parts_only");
     }
 
     const playableFile = selectPlayableFile(files, payload);
@@ -587,8 +599,9 @@ function interleaveCandidatesBySource(candidates: SourceCandidate[], limit: numb
 async function pregrabExternalCandidates(client: DeepbridClient, candidates: SourceCandidate[], mode: "direct" | "prechecked" = "direct", userConfig?: any, requestBaseUrl?: string): Promise<SourceCandidate[]> {
   const startedAt = Date.now();
   const directMode = mode === "direct";
-  const deadlineMs = directMode ? 22000 : 22000;
-  const maxAttempts = directMode ? 14 : 48;
+  const hasNewshostingCandidates = candidates.some(candidate => candidate.origin === "newshosting-direct");
+  const deadlineMs = directMode ? (hasNewshostingCandidates ? 45000 : 22000) : 22000;
+  const maxAttempts = directMode ? (hasNewshostingCandidates ? 28 : 14) : 48;
   const maxReady = directMode ? 8 : 24;
   const sortedCandidates = candidates
     .filter(candidate => candidate.origin !== "deepbrid-official")
@@ -663,6 +676,14 @@ async function pregrabExternalCandidates(client: DeepbridClient, candidates: Sou
         sourceStats(candidate).ready++;
       } catch (error) {
         const failureCategory = deepbridAddErrorCategory(error);
+        if (failureCategory === "archive_parts") {
+          stats.skippedArchives++;
+          const source = sourceStats(candidate);
+          source.skipped++;
+          source.errors ||= {};
+          source.errors[failureCategory] = (source.errors[failureCategory] || 0) + 1;
+          continue;
+        }
         stats.failed++;
         const source = sourceStats(candidate);
         source.failed++;

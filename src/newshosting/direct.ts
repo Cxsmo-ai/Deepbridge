@@ -293,7 +293,8 @@ export async function getNewshostingSources(
 
   stats.dedupedItems = results.length;
   const candidates: SourceCandidate[] = [];
-  const maxResults = Math.max(0, Math.min(Number(userConfig?.newshostingMaxResults || 12) || 12, 40));
+  const requestedMaxResults = Number(userConfig?.newshostingMaxResults || 12) || 12;
+  const maxResults = Math.max(0, Math.min(userConfig?.directLinksOnly !== false ? Math.max(requestedMaxResults, 24) : requestedMaxResults, 40));
   const filtered = results
     .filter(result => result.name && result.index && result.scope && result.itemId && !isArchiveRelease(result.name))
     .filter(result => !result.files || result.files <= creds.maxNzbFiles)
