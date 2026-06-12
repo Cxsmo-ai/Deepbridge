@@ -596,21 +596,65 @@ function interleaveCandidatesBySource(candidates: SourceCandidate[], limit: numb
   return selected;
 }
 
+function directModeCandidates(candidates: SourceCandidate[], limit: number): SourceCandidate[] {
+  const easynewsCandidates = candidates.filter(isEasynewsCandidate).slice(0, 2);
+  const nonEasynews = candidates.filter(candidate => !isEasynewsCandidate(candidate));
+  const newshosting = nonEasynews.filter(candidate => candidate.origin === "newshosting-direct");
+  const otherCandidates = nonEasynews.filter(candidate => candidate.origin !== "newshosting-direct");
+  if (newshosting.length === 0) {
+    return [
+      ...easynewsCandidates,
+      ...interleaveCandidatesBySource(otherCandidates, Math.max(0, limit - easynewsCandidates.length))
+    ];
+  }
+
+  const selected: SourceCandidate[] = [...easynewsCandidates];
+  const otherGroups = new Map<string, SourceCandidate[]>();
+  for (const candidate of otherCandidates) {
+    const key = sourceKey(candidate).toLowerCase();
+    const group = otherGroups.get(key) || [];
+    group.push(candidate);
+    otherGroups.set(key, group);
+  }
+  const groups = Array.from(otherGroups.values());
+
+  let round = 0;
+  while (selected.length < limit) {
+    let added = false;
+    for (let offset = 0; offset < 2; offset++) {
+      const candidate = newshosting[(round * 2) + offset];
+      if (!candidate) continue;
+      selected.push(candidate);
+      added = true;
+      if (selected.length >= limit) break;
+    }
+    if (selected.length >= limit) break;
+    for (const group of groups) {
+      const candidate = group[round];
+      if (!candidate) continue;
+      selected.push(candidate);
+      added = true;
+      if (selected.length >= limit) break;
+    }
+    if (!added) break;
+    round++;
+  }
+
+  return selected;
+}
+
 async function pregrabExternalCandidates(client: DeepbridClient, candidates: SourceCandidate[], mode: "direct" | "prechecked" = "direct", userConfig?: any, requestBaseUrl?: string): Promise<SourceCandidate[]> {
   const startedAt = Date.now();
   const directMode = mode === "direct";
   const hasNewshostingCandidates = candidates.some(candidate => candidate.origin === "newshosting-direct");
-  const deadlineMs = directMode ? (hasNewshostingCandidates ? 45000 : 22000) : 22000;
-  const maxAttempts = directMode ? (hasNewshostingCandidates ? 28 : 14) : 48;
+  const deadlineMs = directMode ? (hasNewshostingCandidates ? 75000 : 22000) : 22000;
+  const maxAttempts = directMode ? (hasNewshostingCandidates ? 36 : 14) : 48;
   const maxReady = directMode ? 8 : 24;
   const sortedCandidates = candidates
     .filter(candidate => candidate.origin !== "deepbrid-official")
     .sort((a, b) => b.score - a.score);
   const externalCandidates = directMode
-    ? [
-        ...sortedCandidates.filter(isEasynewsCandidate).slice(0, 2),
-        ...interleaveCandidatesBySource(sortedCandidates.filter(candidate => !isEasynewsCandidate(candidate)), maxAttempts - 2)
-      ]
+    ? directModeCandidates(sortedCandidates, maxAttempts)
     : sortedCandidates.slice(0, maxAttempts);
   const readyCandidates: SourceCandidate[] = [];
   const concurrency = directMode ? 3 : 4;
