@@ -181,7 +181,12 @@ export class NewshostingClient {
 
   async createNzb(index: string, scope: string, itemId: string): Promise<string> {
     await this.send(`<group><id index="${xmlEscape(index)}" scope="${xmlEscape(scope)}" item="${xmlEscape(itemId)}"/></group>`);
-    const groupXml = await decodeFrame(this.socket!, this.options.timeoutMs);
+    let groupXml: string;
+    try {
+      groupXml = await decodeFrame(this.socket!, this.options.timeoutMs);
+    } catch (error) {
+      throw new Error(`newshosting_group_detail_failed:${error instanceof Error ? error.message : String(error)}`);
+    }
     const group = parseGroupDetail(groupXml);
     if (group.files.length > this.options.maxNzbFiles) {
       throw new Error("newshosting_nzb_too_many_files");
@@ -194,7 +199,13 @@ export class NewshostingClient {
     }
 
     for (const file of group.files) {
-      const detail = parseFileDetail(await decodeFrame(this.socket!, this.options.timeoutMs), fallbackAuthor);
+      let fileXml: string;
+      try {
+        fileXml = await decodeFrame(this.socket!, this.options.timeoutMs);
+      } catch (error) {
+        throw new Error(`newshosting_file_detail_failed:${file.num}:${error instanceof Error ? error.message : String(error)}`);
+      }
+      const detail = parseFileDetail(fileXml, fallbackAuthor);
       nzbFiles.push({
         name: file.name,
         timestamp: file.timestamp,

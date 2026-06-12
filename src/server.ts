@@ -75,6 +75,17 @@ type ResolvePayload = {
 const resolveCache = new Map<string, { url: string; expiresAt: number }>();
 const resolveInflight = new Map<string, Promise<string>>();
 const newshostingNzbCache = new Map<string, { nzb: string; expiresAt: number }>();
+let lastNewshostingNzbStats = {
+  attempted: 0,
+  generated: 0,
+  failed: 0,
+  lastStartedAt: "",
+  lastFinishedAt: "",
+  lastDurationMs: 0,
+  averageDurationMs: 0,
+  lastErrorCategory: "",
+  errors: {} as Record<string, number>
+};
 let lastPregrabStats = {
   mode: "direct",
   startedAt: "",
@@ -89,7 +100,7 @@ let lastPregrabStats = {
   maxAttempts: 0,
   maxReady: 0,
   concurrency: 0,
-  bySource: {} as Record<string, { attempted: number; ready: number; failed: number; skipped: number }>
+  bySource: {} as Record<string, { attempted: number; ready: number; failed: number; skipped: number; errors?: Record<string, number> }>
 };
 // Final Deepbrid/myfast playback URLs can be short-lived or single-use.
 // Keep only in-flight de-duping, not long-lived cached redirects.
@@ -108,7 +119,8 @@ function cacheHealth() {
     },
     newshostingNzb: {
       entries: newshostingNzbCache.size,
-      ttlMs: 10 * 60 * 1000
+      ttlMs: 10 * 60 * 1000,
+      generation: lastNewshostingNzbStats
     },
     deepbridAdd: lastPregrabStats,
     indexerSearch: getLastIndexerSearchStats(),
@@ -119,6 +131,38 @@ function cacheHealth() {
   };
 }
 
+function newshostingNzbErrorCategory(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error || "unknown");
+  if (/too_large|too_many_files|frame_too_large/i.test(message)) return "too_large";
+  if (/timeout|read_timeout/i.test(message)) return "timeout";
+  if (/connect|ECONN|ENOTFOUND|network|stream_ended/i.test(message)) return "network";
+  if (/login|auth|credential/i.test(message)) return "auth";
+  if (/group_detail/i.test(message)) return "group_detail";
+  if (/file_detail/i.test(message)) return "file_detail";
+  return "other";
+}
+
+function recordNewshostingNzbResult(startedAt: number, error?: unknown) {
+  const duration = Date.now() - startedAt;
+  lastNewshostingNzbStats.lastFinishedAt = new Date().toISOString();
+  lastNewshostingNzbStats.lastDurationMs = duration;
+  const completed = lastNewshostingNzbStats.generated + lastNewshostingNzbStats.failed + 1;
+  lastNewshostingNzbStats.averageDurationMs = Math.round(
+    ((lastNewshostingNzbStats.averageDurationMs * (completed - 1)) + duration) / completed
+  );
+
+  if (error) {
+    const category = newshostingNzbErrorCategory(error);
+    lastNewshostingNzbStats.failed++;
+    lastNewshostingNzbStats.lastErrorCategory = category;
+    lastNewshostingNzbStats.errors[category] = (lastNewshostingNzbStats.errors[category] || 0) + 1;
+    return;
+  }
+
+  lastNewshostingNzbStats.generated++;
+  lastNewshostingNzbStats.lastErrorCategory = "";
+}
+
 function createNewshostingNzbIsolated(encodedId: string, userConfig: any): Promise<string> {
   const timeoutMs = Math.min(
     Math.max(Number(
@@ -126,10 +170,13 @@ function createNewshostingNzbIsolated(encodedId: string, userConfig: any): Promi
       || userConfig?.newshostingTimeout
       || 45000
     ) || 45000, 1000),
-    60000
+    120000
   );
   const workerPath = path.join(__dirname, "newshosting", "nzbWorker.js");
   const maxOutputBytes = 64 * 1024 * 1024;
+  const startedAt = Date.now();
+  lastNewshostingNzbStats.attempted++;
+  lastNewshostingNzbStats.lastStartedAt = new Date(startedAt).toISOString();
 
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [workerPath], {
@@ -146,10 +193,12 @@ function createNewshostingNzbIsolated(encodedId: string, userConfig: any): Promi
       settled = true;
       clearTimeout(timeout);
       if (error) {
+        recordNewshostingNzbResult(startedAt, error);
         child.kill("SIGKILL");
         reject(error);
         return;
       }
+      recordNewshostingNzbResult(startedAt);
       resolve(value || "");
     };
 
@@ -312,6 +361,10 @@ function fileTitle(file: any): string {
   return String(file.filename || file.name || file.subject || "");
 }
 
+function fileDownloadUrl(file: any): string | undefined {
+  return file?.download_url || file?.downloadUrl || file?.url || file?.link || file?.download;
+}
+
 function isVideoFile(file: any): boolean {
   return /\.(mkv|mp4|m4v|mov|avi|ts|m2ts|webm)$/i.test(fileTitle(file));
 }
@@ -354,7 +407,7 @@ function isArchiveUrl(url: string): boolean {
 
 function selectPlayableFile(files: any[], payload: ResolvePayload): any {
   const playableFiles = files
-    .filter(file => file?.download_url)
+    .filter(file => fileDownloadUrl(file))
     .filter(file => isVideoFile(file))
     .filter(file => hasStrongVideoEvidence(file))
     .filter(file => !isAudioFile(file));
@@ -407,6 +460,37 @@ function selectTorrentLink(links: string[]): string | undefined {
   return links.find(link => /\.(?:mkv|mp4|m4v|avi|mov|ts|m2ts)(?:$|[/?#&])/i.test(link)) || links[0];
 }
 
+function usenetFilesFromAddResponse(addData: any): any[] {
+  const candidates = [
+    addData?.files,
+    addData?.data?.files,
+    addData?.result?.files,
+    addData?.download?.files,
+    addData?.item?.files
+  ];
+  return candidates.find(Array.isArray) || [];
+}
+
+function deepbridAddErrorMessage(addData: any): string {
+  return String(
+    addData?.message
+    || addData?.error_message
+    || addData?.msg
+    || addData?.error
+    || "Failed to add or resolve Usenet link on Deepbrid."
+  );
+}
+
+function deepbridAddErrorCategory(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error || "unknown");
+  if (/timeout|aborted/i.test(message)) return "timeout";
+  if (/internal server error|http_5|statusCode\":5/i.test(message)) return "deepbrid_5xx";
+  if (/not found|http_404|statusCode\":404/i.test(message)) return "fetch_404";
+  if (/no playable/i.test(message)) return "no_playable_file";
+  if (/auth|token|credential|401|403/i.test(message)) return "auth";
+  return "other";
+}
+
 async function resolveNzbToPlayableUrl(client: DeepbridClient, payload: ResolvePayload, addTimeoutMs = 25000): Promise<string> {
   const cacheKey = resolveCacheKey(payload);
   const cached = resolveCache.get(cacheKey);
@@ -417,18 +501,20 @@ async function resolveNzbToPlayableUrl(client: DeepbridClient, payload: ResolveP
 
   const promise = (async () => {
     const addData = await client.addUsenetByUrl(payload.nzbUrl, addTimeoutMs) as any;
+    const files = usenetFilesFromAddResponse(addData);
     
-    if (addData.error || !addData.files || addData.files.length === 0) {
-      throw new Error("Failed to add or resolve Usenet link on Deepbrid.");
+    if (addData.error || files.length === 0) {
+      throw new Error(deepbridAddErrorMessage(addData));
     }
 
-    const playableFile = selectPlayableFile(addData.files, payload);
+    const playableFile = selectPlayableFile(files, payload);
+    const playableDownloadUrl = playableFile ? fileDownloadUrl(playableFile) : undefined;
     
-    if (!playableFile || !playableFile.download_url) {
+    if (!playableFile || !playableDownloadUrl) {
       throw new Error("No playable video file found in this NZB.");
     }
 
-    const playableUrl = normalizePlayableUrl(String(playableFile.download_url));
+    const playableUrl = normalizePlayableUrl(String(playableDownloadUrl));
     if (resolveTtlMs > 0) {
       resolveCache.set(cacheKey, { url: playableUrl, expiresAt: Date.now() + resolveTtlMs });
     }
@@ -529,13 +615,13 @@ async function pregrabExternalCandidates(client: DeepbridClient, candidates: Sou
     maxAttempts,
     maxReady,
     concurrency,
-    bySource: {} as Record<string, { attempted: number; ready: number; failed: number; skipped: number }>
+    bySource: {} as Record<string, { attempted: number; ready: number; failed: number; skipped: number; errors?: Record<string, number> }>
   };
   let index = 0;
 
   function sourceStats(candidate: SourceCandidate) {
     const key = sourceKey(candidate);
-    stats.bySource[key] ||= { attempted: 0, ready: 0, failed: 0, skipped: 0 };
+    stats.bySource[key] ||= { attempted: 0, ready: 0, failed: 0, skipped: 0, errors: {} };
     return stats.bySource[key];
   }
 
@@ -575,9 +661,13 @@ async function pregrabExternalCandidates(client: DeepbridClient, candidates: Sou
         });
         stats.ready++;
         sourceStats(candidate).ready++;
-      } catch {
+      } catch (error) {
+        const failureCategory = deepbridAddErrorCategory(error);
         stats.failed++;
-        sourceStats(candidate).failed++;
+        const source = sourceStats(candidate);
+        source.failed++;
+        source.errors ||= {};
+        source.errors[failureCategory] = (source.errors[failureCategory] || 0) + 1;
         // Invalid or unresolved indexer results are intentionally hidden.
       }
     }

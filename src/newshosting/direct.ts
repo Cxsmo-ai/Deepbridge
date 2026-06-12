@@ -147,14 +147,15 @@ function sizeLooksPlayable(size: number): boolean {
 
 function fileCountPenalty(files: number): number {
   if (!files || files <= 1) return 0;
-  if (files <= 4) return 60;
-  if (files <= 12) return 160;
-  if (files <= 24) return 320;
-  return 700;
+  if (files <= 4) return 80;
+  if (files <= 12) return 260;
+  if (files <= 24) return 520;
+  return 1100;
 }
 
 function newshostingRankScore(result: NewshostingResult, matchScore: number): number {
   let score = matchScore;
+  if (/\b(?:rifftrax|commentary|extras?|bonus|sample)\b/i.test(result.name)) score -= 900;
   if (looksLikeVideoRelease(result.name)) score += 220;
   if (/\.(?:mkv|mp4|m4v)(?:$|[\s._-])/i.test(result.name)) score += 240;
   if (result.files > 0) score -= fileCountPenalty(result.files);

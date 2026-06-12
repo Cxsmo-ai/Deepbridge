@@ -16,10 +16,20 @@ async function readExactly(stream: NodeJS.ReadableStream, size: number, timeoutM
   let total = 0;
 
   while (total < size) {
-    const chunk = stream.read(size - total) as Buffer | null;
+    const chunk = stream.read() as Buffer | null;
     if (chunk) {
-      chunks.push(chunk);
-      total += chunk.length;
+      const remaining = size - total;
+      if (chunk.length > remaining) {
+        chunks.push(chunk.subarray(0, remaining));
+        total += remaining;
+        const unread = chunk.subarray(remaining);
+        const pushback = stream as NodeJS.ReadableStream & { unshift?: (chunk: Buffer) => void };
+        if (!pushback.unshift) throw new Error("newshosting_stream_cannot_unshift");
+        pushback.unshift(unread);
+      } else {
+        chunks.push(chunk);
+        total += chunk.length;
+      }
       continue;
     }
 
