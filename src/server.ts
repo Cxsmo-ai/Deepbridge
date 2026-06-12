@@ -648,7 +648,24 @@ async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, 
           ...newshostingCandidates
         ];
     
-    const candidates = dedupeCandidates([...officialCandidates, ...externalCandidates, ...easynewsDirectCandidates, ...torrentCandidates, ...upstreamAddonCandidates])
+    const candidateGroups = directLinksOnly
+      ? [
+          dedupeCandidates(officialCandidates),
+          dedupeCandidates(externalCandidates),
+          dedupeCandidates(easynewsDirectCandidates),
+          dedupeCandidates(torrentCandidates),
+          dedupeCandidates(upstreamAddonCandidates)
+        ]
+      : [
+          dedupeCandidates([
+            ...officialCandidates,
+            ...externalCandidates,
+            ...easynewsDirectCandidates,
+            ...torrentCandidates,
+            ...upstreamAddonCandidates
+          ])
+        ];
+    const candidates = candidateGroups.flat()
       .filter(candidate => !directLinksOnly || Boolean(candidate.playableUrl));
     const streams = formatStreams(candidates, dynamicBaseUrl, token);
     
