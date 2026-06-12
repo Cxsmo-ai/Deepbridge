@@ -363,6 +363,15 @@
       <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 5px;">Direct Deepbrid links is recommended. Deepbridge attempts more AltHub/Newznab results through Deepbrid and only shows direct playable Deepbrid/myfast links in Stremio.</p>
     </div>
 
+    <div class="form-group" style="margin-bottom: 20px;">
+      <label>Direct Links Only</label>
+      <select id="directLinksOnly">
+        <option value="true" selected>Enabled</option>
+        <option value="false">Disabled</option>
+      </select>
+      <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 5px;">Only show streams that already have a direct playback URL. Addon resolve/play proxy links are hidden.</p>
+    </div>
+
     <div style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; margin-bottom: 30px;">
       <label style="font-size: 0.95rem; color: var(--text); margin-bottom: 10px; display: block;">Built-in Easynews Source</label>
       <div class="form-group" style="margin-bottom: 15px;">
@@ -722,6 +731,7 @@
     const configObj = {
       deepbridApiKey: deepbridKey,
       externalResultMode: document.getElementById('externalResultMode').value,
+      directLinksOnly: document.getElementById('directLinksOnly').value === 'true',
       easynewsEnabled: document.getElementById('easynewsEnabled').value === 'true',
       easynewsUsername: document.getElementById('easynewsUsername').value.trim(),
       easynewsPassword: document.getElementById('easynewsPassword').value,

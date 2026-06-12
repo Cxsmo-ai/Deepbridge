@@ -630,11 +630,14 @@ async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, 
     const torrentCandidates = torrentResult.status === "fulfilled" ? torrentResult.value : [];
     const upstreamAddonCandidates = upstreamAddonResult.status === "fulfilled" ? upstreamAddonResult.value : [];
     const externalMode = userConfig?.externalResultMode === "prechecked" ? "prechecked" : "direct";
-    const pregrabCandidates = userConfig?.newshostingPrecheck === true
+    const directLinksOnly = userConfig?.directLinksOnly !== false;
+    const pregrabCandidates = directLinksOnly || userConfig?.newshostingPrecheck === true
       ? [...indexerCandidates, ...newshostingCandidates]
       : indexerCandidates;
     const readyIndexerCandidates = await pregrabExternalCandidates(client, pregrabCandidates, externalMode, userConfig, dynamicBaseUrl);
-    const externalCandidates = externalMode === "direct"
+    const externalCandidates = directLinksOnly
+      ? readyIndexerCandidates
+      : externalMode === "direct"
       ? [
           ...indexerCandidates.filter(candidate => !isEasynewsCandidate(candidate)),
           ...newshostingCandidates,
@@ -645,7 +648,8 @@ async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, 
           ...newshostingCandidates
         ];
     
-    const candidates = dedupeCandidates([...officialCandidates, ...externalCandidates, ...easynewsDirectCandidates, ...torrentCandidates, ...upstreamAddonCandidates]);
+    const candidates = dedupeCandidates([...officialCandidates, ...externalCandidates, ...easynewsDirectCandidates, ...torrentCandidates, ...upstreamAddonCandidates])
+      .filter(candidate => !directLinksOnly || Boolean(candidate.playableUrl));
     const streams = formatStreams(candidates, dynamicBaseUrl, token);
     
     // Fallback if empty
@@ -732,6 +736,7 @@ app.get("/:token/health", async (request) => {
     config: {
       hasTokenConfig: Boolean(userConfig),
       externalResultMode: userConfig?.externalResultMode || "direct",
+      directLinksOnly: userConfig?.directLinksOnly !== false,
       indexers: Array.isArray(userConfig?.indexers) ? userConfig.indexers.length : 0,
       easynewsDirectConfigured: Boolean(userConfig?.easynewsUsername && userConfig?.easynewsPassword),
       easynewsDirectEnabled: Boolean(userConfig?.easynewsEnabled !== false && userConfig?.easynewsUsername && userConfig?.easynewsPassword),

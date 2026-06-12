@@ -71,6 +71,7 @@ Deepbridge is built for people who want a simple addon URL, a clean configuratio
 - Newshosting runs inside Deepbridge, generates NZBs on demand, and submits them to Deepbrid without a separate indexer API key.
 - Deepbrid torrent library support with fresh link refresh at playback time.
 - External magnet support that adds to Deepbrid on demand.
+- Direct-links-only mode hides unresolved addon proxy links by default.
 - Optional external Usenet indexer support.
 - Direct external result mode: pre-adds/prechecks more indexer NZBs through Deepbrid before showing them.
 - External pregrab: indexer NZBs are submitted to Deepbrid before being shown as direct playback links.

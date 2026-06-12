@@ -104,6 +104,14 @@ function encodeTorrentPayload(payload: any): string {
   return Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
 }
 
+function normalizePlayableUrl(url: string): string {
+  return new URL(url, "https://www.deepbrid.com").toString();
+}
+
+function selectTorrentLink(links: string[]): string | undefined {
+  return links.find(link => /\.(?:mkv|mp4|m4v|avi|mov|ts|m2ts)(?:$|[/?#&])/i.test(link)) || links[0];
+}
+
 function externalTorrents(userConfig: any): any[] {
   if (Array.isArray(userConfig?.externalTorrents)) return userConfig.externalTorrents;
   const text = String(userConfig?.externalTorrentMagnets || "").trim();
@@ -135,6 +143,7 @@ export async function getTorrentSources(client: DeepbridClient, media: MediaRequ
 
   const metadata = await fetchMediaMetadata(media);
   const candidates: SourceCandidate[] = [];
+  const directLinksOnly = userConfig?.directLinksOnly !== false;
 
   if (userConfig?.deepbridLibraryEnabled !== false) {
     try {
@@ -147,7 +156,13 @@ export async function getTorrentSources(client: DeepbridClient, media: MediaRequ
         if (match.score < (media.type === "series" ? 650 : 600)) continue;
         stats.matched++;
         if (torrent.status !== "ready" && torrent.status !== "ready_missing_links") continue;
-        const url = `${baseUrl.replace(/\/+$/, "")}/${encodeURIComponent(token)}/torrent/play/${encodeTorrentPayload({ id: torrent.id, title: torrent.filename, season: media.season, episode: media.episode })}`;
+        let playableUrl = `${baseUrl.replace(/\/+$/, "")}/${encodeURIComponent(token)}/torrent/play/${encodeTorrentPayload({ id: torrent.id, title: torrent.filename, season: media.season, episode: media.episode })}`;
+        if (directLinksOnly) {
+          const refreshed = normalizeTorrent(await client.getTorrentInfo(torrent.id, Number(userConfig?.torrentInfoTimeout || 12000) || 12000));
+          const link = selectTorrentLink(refreshed.links);
+          if (!link) continue;
+          playableUrl = normalizePlayableUrl(link);
+        }
         candidates.push({
           id: nanoid(),
           mediaType: media.type,
@@ -159,7 +174,7 @@ export async function getTorrentSources(client: DeepbridClient, media: MediaRequ
           title: torrent.filename,
           displayName: "[Deepbrid Library]",
           status: "ready",
-          playableUrl: url,
+          playableUrl,
           resolution: parsed.resolution,
           quality: parsed.quality,
           codec: parsed.codec,
@@ -180,6 +195,12 @@ export async function getTorrentSources(client: DeepbridClient, media: MediaRequ
     } catch {
       stats.errors.library = (stats.errors.library || 0) + 1;
     }
+  }
+
+  if (directLinksOnly) {
+    stats.finishedAt = new Date().toISOString();
+    lastTorrentStats = stats;
+    return candidates;
   }
 
   for (const item of externalTorrents(userConfig).filter(item => isRelevantExternal(item, media))) {

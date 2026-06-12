@@ -12,6 +12,7 @@ export interface IndexerConfig {
 
 export interface UserConfig {
   deepbridApiKey: string;
+  directLinksOnly?: boolean;
   externalResultMode?: "direct" | "prechecked";
   easynewsEnabled?: boolean;
   easynewsUsername?: string;

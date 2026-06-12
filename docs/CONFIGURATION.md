@@ -49,6 +49,8 @@ Upstream Stremio addon URLs can also be added, one per line. Deepbridge calls th
 
 ## External result mode
 
+`directLinksOnly` defaults to enabled. In this mode Deepbridge only returns stream cards with real direct playback URLs. Unresolved `/resolve`, `/torrent/add`, and `/torrent/play` addon links are hidden. Disable it only if you want instant-resolve proxy cards.
+
 The dashboard supports two external result modes:
 
 - `direct` - recommended default. Deepbridge attempts more external candidates through Deepbrid and only shows streams after Deepbrid returns a direct playable URL.

@@ -63,6 +63,19 @@ function titleFromStream(stream: any, fallback: string): string {
 
 export async function getUpstreamAddonSources(media: MediaRequest, userConfig: any, baseUrl: string, token: string): Promise<SourceCandidate[]> {
   const startedAt = Date.now();
+  if (userConfig?.directLinksOnly !== false) {
+    lastUpstreamStats = {
+      startedAt: new Date(startedAt).toISOString(),
+      finishedAt: new Date().toISOString(),
+      configured: Array.isArray(userConfig?.stremioAddons) ? userConfig.stremioAddons.length : 0,
+      fulfilled: 0,
+      failed: 0,
+      rawStreams: 0,
+      candidates: 0,
+      errors: {}
+    };
+    return [];
+  }
   const addons = Array.isArray(userConfig?.stremioAddons)
     ? userConfig.stremioAddons.filter((addon: any) => addon?.enabled !== false && addon?.url)
     : [];
