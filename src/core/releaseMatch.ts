@@ -179,15 +179,28 @@ export function dedupeCandidates(candidates: SourceCandidate[]): SourceCandidate
 }
 
 export function compareCandidates(a: SourceCandidate, b: SourceCandidate): number {
+  const libraryDiff = libraryRank(a) - libraryRank(b);
+  if (libraryDiff !== 0) return libraryDiff;
+
   if (a.status === "ready" && b.status !== "ready") return -1;
   if (b.status === "ready" && a.status !== "ready") return 1;
-  const matchDiff = (b.matchScore || 0) - (a.matchScore || 0);
-  if (matchDiff !== 0) return matchDiff;
+
+  const sizeDiff = sizeRank(b) - sizeRank(a);
+  if (sizeDiff !== 0) return sizeDiff;
+
+  const sourceDiff = sourcePriority(a) - sourcePriority(b);
+  if (sourceDiff !== 0) return sourceDiff;
+
+  const qualityDiff = qualityRank(b.quality) - qualityRank(a.quality);
+  if (qualityDiff !== 0) return qualityDiff;
+
   const resDiff = resolutionRank(b.resolution) - resolutionRank(a.resolution);
   if (resDiff !== 0) return resDiff;
-  const scoreDiff = b.score - a.score;
-  if (scoreDiff !== 0) return scoreDiff;
-  return (b.sizeBytes || 0) - (a.sizeBytes || 0);
+
+  const matchDiff = (b.matchScore || 0) - (a.matchScore || 0);
+  if (matchDiff !== 0) return matchDiff;
+
+  return b.score - a.score;
 }
 
 export function resolutionRank(resolution: string | undefined): number {
@@ -195,5 +208,29 @@ export function resolutionRank(resolution: string | undefined): number {
   if (resolution === "1080p") return 3;
   if (resolution === "720p") return 2;
   if (resolution === "480p" || resolution === "SD") return 1;
+  return 0;
+}
+
+function libraryRank(candidate: SourceCandidate): number {
+  return candidate.origin === "deepbrid-torrent-library" ? 0 : 1;
+}
+
+function sizeRank(candidate: SourceCandidate): number {
+  return candidate.sizeBytes && Number.isFinite(candidate.sizeBytes) ? candidate.sizeBytes : 0;
+}
+
+function sourcePriority(candidate: SourceCandidate): number {
+  if (candidate.origin === "deepbrid-official") return 0;
+  if (candidate.origin === "easynews-direct") return 1;
+  if (candidate.origin === "newshosting-direct") return 3;
+  return 2;
+}
+
+function qualityRank(quality: SourceCandidate["quality"]): number {
+  if (quality === "REMUX") return 5;
+  if (quality === "BluRay") return 4;
+  if (quality === "WEB-DL") return 3;
+  if (quality === "WEBRip") return 2;
+  if (quality === "HDTV") return 1;
   return 0;
 }
