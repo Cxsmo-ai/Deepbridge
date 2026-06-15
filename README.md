@@ -155,7 +155,7 @@ Deepbrid Usenet Finder Source
 
 Usenet Finder behavior:
 - Deepbridge securely borrows your browser session cookie to bypass Deepbrid's website protections.
-- It dynamically spins up an internal headless browser solver (`Byparr`) to navigate Cloudflare challenges.
+- **IMPORTANT**: It requires an internal headless browser solver called **Byparr** ([GitHub - ThePhaseless/Byparr](https://github.com/ThePhaseless/Byparr)) to navigate Cloudflare challenges. Byparr must be running alongside Deepbridge.
 - Search queries hit Deepbrid's private Vue/AJAX API endpoints directly to gather Usenet results.
 - Top results are automatically filtered, processed, and resolved to playable Deepbrid streams.
 - Stream cards are labeled `Deepbrid Official ⚡ Ready` when using this source.
