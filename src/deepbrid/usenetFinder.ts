@@ -245,22 +245,27 @@ function matchFirst(html: string, pattern: RegExp): string | undefined {
 function parseFinderResults(html: string, media: MediaRequest, metadata: MediaMetadata): FinderResult[] {
   const out: FinderResult[] = [];
   const seen = new Set<string>();
-  const rowRegex = /<tr\b[^>]*data-token=["']([^"']+)["'][^>]*>([\s\S]*?)<\/tr>/gi;
-  for (const match of html.matchAll(rowRegex)) {
-    const token = decodeHtml(match[1]).trim();
-    const row = match[2];
+  
+  let data;
+  try {
+    data = JSON.parse(html);
+  } catch (err) {
+    // Fallback just in case they revert
+    return [];
+  }
+  
+  const results = data?.results || [];
+  for (const item of results) {
+    const token = item.token;
     if (!token || seen.has(token)) continue;
     seen.add(token);
-
-    const rawTitle = matchFirst(row, /<div\b[^>]*class=["'][^"']*\btitle\b[^"']*["'][^>]*>([\s\S]*?)(?:<button\b|<span\b|<\/div>)/i)
-      || matchFirst(row, /<td\b[^>]*>([\s\S]*?)<\/td>/i)
-      || "";
-    const title = stripTags(rawTitle);
+    
+    const title = item.title;
     if (!title) continue;
-
-    const category = stripTags(matchFirst(row, /<span\b[^>]*class=["'][^"']*\bresult-category\b[^"']*["'][^>]*>([\s\S]*?)<\/span>/i) || "");
-    const sizeText = stripTags(matchFirst(row, /<span\b[^>]*class=["'][^"']*\bresult-size\b[^"']*["'][^>]*>([\s\S]*?)<\/span>/i) || "");
-    const sizeBytes = parseSizeBytes(sizeText);
+    
+    const category = item.cat || "";
+    const sizeBytes = Number(item.sizeBytes) || undefined;
+    
     const parsed = parseRelease(title);
     const matchScore = scoreReleaseMatch(title, media, parsed, metadata);
     out.push({
@@ -295,6 +300,7 @@ function mergeCookieStrings(baseCookie: string, cookies: ByparrCookie[] = []): s
   for (const cookie of cookies) {
     const name = String(cookie.name || "").trim();
     const value = String(cookie.value || "").trim();
+    if (name === "PHPSESSID" || name.startsWith("amember_")) continue;
     if (name && value) merged.set(name, value);
   }
   return Array.from(merged.entries()).map(([name, value]) => `${name}=${value}`).join("; ");
@@ -334,12 +340,17 @@ async function solveCloudflareWithByparr(targetUrl: string, context: FinderHttpC
   const cookies = data.solution?.cookies || [];
   if (cookies.length === 0) return false;
   context.cookie = mergeCookieStrings(context.cookie, cookies);
-  if (data.solution?.userAgent && !context.explicitBrowserIdentity) context.userAgent = data.solution.userAgent;
+  if (data.solution?.userAgent) {
+    context.userAgent = data.solution.userAgent;
+    if (context.browserHeaders["user-agent"]) {
+      context.browserHeaders["user-agent"] = data.solution.userAgent;
+    }
+  }
   return true;
 }
 
 async function primeCloudflareWithByparr(url: URL, context: FinderHttpContext): Promise<void> {
-  if (context.cloudflarePrimed || context.explicitBrowserIdentity || !byparrUrl()) return;
+  if (context.cloudflarePrimed || !byparrUrl()) return;
   context.cloudflarePrimed = true;
   const solved = await solveCloudflareWithByparr(url.toString(), context, byparrTimeoutMs(context.userConfig));
   if (!solved) throw new Error("deepbrid_finder_cloudflare_challenge");
@@ -397,7 +408,7 @@ async function requestFinderText(url: URL, context: FinderHttpContext, timeoutMs
     return { statusCode: res.statusCode, text };
   }
 
-  const solved = await solveCloudflareWithByparr(url.toString(), context, timeoutMs);
+  const solved = await solveCloudflareWithByparr(url.toString(), context, byparrTimeoutMs(context.userConfig));
   if (!solved) throw new Error("deepbrid_finder_cloudflare_challenge");
 
   const retry = await request(url, {
@@ -413,9 +424,11 @@ async function requestFinderText(url: URL, context: FinderHttpContext, timeoutMs
 
 async function searchFinder(query: string, context: FinderHttpContext, timeoutMs: number, media: MediaRequest, metadata: MediaMetadata): Promise<FinderResult[]> {
   const url = new URL("https://www.deepbrid.com/usenet-finder");
+  url.searchParams.set("ajax", "1");
+  url.searchParams.set("do", "search");
   url.searchParams.set("q", query);
   url.searchParams.set("cat", "");
-  const { statusCode, text: html } = await requestFinderText(url, context, timeoutMs, "text/html,application/xhtml+xml");
+  const { statusCode, text: html } = await requestFinderText(url, context, timeoutMs, "application/json,text/javascript,*/*", true);
   if (statusCode === 401 || statusCode === 403 || hasAuthFailure(html)) {
     throw new Error("deepbrid_finder_auth_failed");
   }
@@ -572,9 +585,15 @@ export async function getDeepbridUsenetFinderSources(media: MediaRequest, userCo
   const selected = rawResults
     .map(result => {
       const parsed = parseRelease(result.title);
-      return { result, parsed, match: scoreReleaseMatch(result.title, media, parsed, metadata) };
+      const match = scoreReleaseMatch(result.title, media, parsed, metadata);
+      // console.log("DEBUG UsenetFinder Result:", result.title, "Score:", match.score, "Reason:", match.reason);
+      return { result, parsed, match };
     })
-    .filter(item => item.match.score >= (media.type === "series" ? 650 : 600))
+    .filter(item => {
+      const passed = item.match.score >= (media.type === "series" ? 650 : 600);
+      console.log("DEBUG UsenetFinder Filter:", item.result.title, "Passed:", passed, "Score:", item.match.score);
+      return passed;
+    })
     .sort((a, b) => b.result.score - a.result.score)
     .slice(0, maxProcess);
   stats.filteredItems = selected.length;
