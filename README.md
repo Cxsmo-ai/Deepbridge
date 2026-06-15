@@ -138,6 +138,28 @@ Newshosting behavior:
 - Deepbrid receives an addon-hosted NZB URL; there is no separate Newznab API key.
 - Stream cards are labeled `Newshosting` when the result came from this built-in source.
 
+## Deepbrid Usenet Finder support
+
+Deepbridge now natively interfaces with Deepbrid's premium website **Usenet Finder** feature. This allows you to scrape Usenet results directly from Deepbrid's website without needing any external indexers.
+
+Configure the Usenet Finder from the Deepbridge dashboard:
+
+```text
+Deepbrid Usenet Finder Source
+  Enable Deepbrid Usenet Finder
+  Deepbrid Website Session Cookie
+  Deepbrid Byparr URL
+  Max Finder Results
+  Max Finder Process Attempts
+```
+
+Usenet Finder behavior:
+- Deepbridge securely borrows your browser session cookie to bypass Deepbrid's website protections.
+- It dynamically spins up an internal headless browser solver (`Byparr`) to navigate Cloudflare challenges.
+- Search queries hit Deepbrid's private Vue/AJAX API endpoints directly to gather Usenet results.
+- Top results are automatically filtered, processed, and resolved to playable Deepbrid streams.
+- Stream cards are labeled `Deepbrid Official ⚡ Ready` when using this source.
+
 ## External result modes
 
 Deepbridge supports two external Newznab/AltHub result modes from the dashboard:
