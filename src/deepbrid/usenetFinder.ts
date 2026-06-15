@@ -346,8 +346,14 @@ async function primeCloudflareWithByparr(url: URL, context: FinderHttpContext): 
 }
 
 function makeFinderHeaders(context: FinderHttpContext, accept: string, ajax: boolean): Record<string, string> {
+  const browserHeaders = { ...context.browserHeaders };
+  delete browserHeaders["user-agent"];
+  delete browserHeaders.accept;
+  delete browserHeaders.cookie;
+  delete browserHeaders.host;
+
   const headers: Record<string, string> = {
-    ...context.browserHeaders,
+    ...browserHeaders,
     Cookie: context.cookie,
     "User-Agent": context.browserHeaders["user-agent"] || context.userAgent,
     Accept: context.browserHeaders.accept || accept
