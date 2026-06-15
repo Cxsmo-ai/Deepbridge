@@ -22,6 +22,7 @@ export interface UserConfig {
   deepbridWebCookie?: string;
   deepbridWebUserAgent?: string;
   deepbridWebHeaders?: Record<string, string> | string;
+  deepbridByparrUrl?: string;
   deepbridByparrTimeout?: number;
   deepbridUsenetFinderMaxResults?: number;
   deepbridUsenetFinderMaxProcess?: number;

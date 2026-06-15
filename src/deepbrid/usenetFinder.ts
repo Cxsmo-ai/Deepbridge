@@ -135,8 +135,8 @@ function hasExplicitBrowserIdentity(userConfig: any, browserHeaders: Record<stri
   );
 }
 
-function byparrUrl(): string {
-  const raw = String(process.env.DEEPBRID_BYPARR_URL || "").trim();
+function byparrUrl(userConfig?: any): string {
+  const raw = String(userConfig?.deepbridByparrUrl || process.env.DEEPBRID_BYPARR_URL || "").trim();
   if (!raw) return "";
   return raw.endsWith("/v1") ? raw : `${raw.replace(/\/+$/, "")}/v1`;
 }
@@ -307,7 +307,7 @@ function mergeCookieStrings(baseCookie: string, cookies: ByparrCookie[] = []): s
 }
 
 async function solveCloudflareWithByparr(targetUrl: string, context: FinderHttpContext, timeoutMs: number): Promise<boolean> {
-  const endpoint = byparrUrl();
+  const endpoint = byparrUrl(context.userConfig);
   if (!endpoint) return false;
 
   const maxTimeout = Math.max(15, Math.ceil(timeoutMs / 1000));
