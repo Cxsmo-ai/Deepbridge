@@ -34,6 +34,7 @@ type FinderHttpContext = {
   cookie: string;
   userAgent: string;
   userConfig?: any;
+  cloudflarePrimed?: boolean;
 };
 
 type ByparrCookie = {
@@ -88,6 +89,10 @@ function byparrUrl(): string {
   const raw = String(process.env.DEEPBRID_BYPARR_URL || "").trim();
   if (!raw) return "";
   return raw.endsWith("/v1") ? raw : `${raw.replace(/\/+$/, "")}/v1`;
+}
+
+function byparrTimeoutMs(userConfig?: any): number {
+  return Number(userConfig?.deepbridByparrTimeout || process.env.DEEPBRID_BYPARR_TIMEOUT || 70000) || 70000;
 }
 
 function isEnabled(userConfig?: any): boolean {
@@ -283,7 +288,16 @@ async function solveCloudflareWithByparr(targetUrl: string, context: FinderHttpC
   return true;
 }
 
+async function primeCloudflareWithByparr(url: URL, context: FinderHttpContext): Promise<void> {
+  if (context.cloudflarePrimed || !byparrUrl()) return;
+  context.cloudflarePrimed = true;
+  const solved = await solveCloudflareWithByparr(url.toString(), context, byparrTimeoutMs(context.userConfig));
+  if (!solved) throw new Error("deepbrid_finder_cloudflare_challenge");
+}
+
 async function requestFinderText(url: URL, context: FinderHttpContext, timeoutMs: number, accept: string, ajax = false): Promise<{ statusCode: number; text: string }> {
+  await primeCloudflareWithByparr(url, context);
+
   const headers: Record<string, string> = {
     Cookie: context.cookie,
     "User-Agent": context.userAgent,

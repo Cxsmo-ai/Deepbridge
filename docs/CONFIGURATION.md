@@ -12,6 +12,7 @@ Deepbridge supports environment-level configuration and per-user web configurati
 | `DEEPBRID_WEB_COOKIE` | empty | Optional logged-in Deepbrid website session cookie for the premium `/usenet-finder` source. API key alone is not enough for this website search flow. |
 | `DEEPBRID_WEB_USER_AGENT` | Chrome-like default | Optional browser User-Agent to use with `DEEPBRID_WEB_COOKIE`. Cloudflare clearance cookies may be bound to the browser User-Agent that created them. |
 | `DEEPBRID_BYPARR_URL` | empty | Optional Byparr `/v1` endpoint used to solve Cloudflare from the server network, then retry Finder with the logged-in Deepbrid cookie plus Byparr clearance. On the Oracle `proxynet` stack this is usually `http://byparr:8191/v1`. |
+| `DEEPBRID_BYPARR_TIMEOUT` | `70000` | Maximum milliseconds for the Usenet Finder-only Byparr Cloudflare solve. |
 | `DEEPBRID_USENET_FINDER_ENABLED` | `true` | Enables the Deepbrid website Usenet Finder source when a web cookie is configured. |
 | `DEEPBRID_USENET_FINDER_MAX_RESULTS` | `4` | Maximum ready Finder streams returned per stream request. |
 | `DEEPBRID_USENET_FINDER_MAX_PROCESS` | `5` | Maximum Finder rows to process into file links per stream request. |
@@ -45,7 +46,7 @@ Deepbridge can optionally use Deepbrid's own premium website Usenet Finder as a 
 
 The Finder website flow currently requires a logged-in Deepbrid website session cookie. A Deepbrid API key is still required for the addon overall, but API key alone does not authenticate `/usenet-finder` search. For hosted installs, prefer setting `DEEPBRID_WEB_COOKIE` on the server instead of embedding the cookie in generated Stremio configuration tokens.
 
-If the server receives a Cloudflare challenge page from `/usenet-finder`, set `DEEPBRID_BYPARR_URL` to a reachable Byparr endpoint. Byparr is used only to obtain Cloudflare clearance cookies from the same network as the addon; Deepbridge still sends the Deepbrid login session cookie on the final Finder requests.
+If the server receives a Cloudflare challenge page from `/usenet-finder`, set `DEEPBRID_BYPARR_URL` to a reachable Byparr endpoint. Byparr is used only for the Deepbrid Usenet Finder flow to obtain Cloudflare clearance cookies from the same network as the addon; Deepbridge still sends the Deepbrid login session cookie on the final Finder requests. Other Deepbridge sources do not call Byparr.
 
 When enabled, Deepbridge searches `/usenet-finder`, scores matching rows, processes a small number of best candidates through Deepbrid's Finder AJAX flow, and returns only direct video file URLs.
 
