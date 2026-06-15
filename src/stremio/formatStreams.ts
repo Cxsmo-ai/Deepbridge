@@ -24,6 +24,7 @@ function encodeResolvePayload(candidate: SourceCandidate): string {
 
 function sourceLabel(candidate: SourceCandidate): string {
   if (candidate.origin === "deepbrid-official") return "Deepbrid Official";
+  if (candidate.origin === "deepbrid-usenet-finder") return "Deepbrid Usenet";
   if (candidate.origin === "easynews-direct") return "Easynews Direct";
   if (candidate.origin === "newshosting-direct") return "Newshosting";
   if (candidate.origin === "deepbrid-torrent-library") return "Deepbrid Library";
@@ -71,6 +72,8 @@ export function formatStreams(candidates: SourceCandidate[], baseUrl: string, to
     if (candidate.status === "ready") {
       if (candidate.origin === "deepbrid-official") {
         thirdLine += " ⚡ Ready";
+      } else if (candidate.origin === "deepbrid-usenet-finder") {
+        thirdLine += " Usenet";
       } else if (candidate.origin === "easynews-direct") {
         thirdLine += " ✅ Direct CDN";
       } else if (candidate.origin === "stremio-addon-torrent") {

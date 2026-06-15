@@ -373,6 +373,32 @@
     </div>
 
     <div style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; margin-bottom: 30px;">
+      <label style="font-size: 0.95rem; color: var(--text); margin-bottom: 10px; display: block;">Deepbrid Usenet Finder Source</label>
+      <div class="form-group" style="margin-bottom: 15px;">
+        <label>Enable Deepbrid Usenet Finder</label>
+        <select id="deepbridUsenetFinderEnabled">
+          <option value="true" selected>Enabled when website session cookie is provided</option>
+          <option value="false">Disabled</option>
+        </select>
+        <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 5px;">This uses Deepbrid's premium website Usenet Finder, not the API-key-only endpoint. It needs a logged-in Deepbrid website session cookie or the server-level DEEPBRID_WEB_COOKIE env var.</p>
+      </div>
+      <div class="form-group" style="margin-bottom: 15px;">
+        <label>Deepbrid Website Session Cookie</label>
+        <input type="password" id="deepbridWebCookie" placeholder="Optional. Prefer server env for hosted installs.">
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div class="form-group" style="margin-bottom: 0;">
+          <label>Max Finder Results</label>
+          <input type="text" id="deepbridUsenetFinderMaxResults" value="4" placeholder="1-10" style="padding: 8px; font-size: 0.9rem;">
+        </div>
+        <div class="form-group" style="margin-bottom: 0;">
+          <label>Max Finder Process Attempts</label>
+          <input type="text" id="deepbridUsenetFinderMaxProcess" value="5" placeholder="1-12" style="padding: 8px; font-size: 0.9rem;">
+        </div>
+      </div>
+    </div>
+
+    <div style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; margin-bottom: 30px;">
       <label style="font-size: 0.95rem; color: var(--text); margin-bottom: 10px; display: block;">Built-in Easynews Source</label>
       <div class="form-group" style="margin-bottom: 15px;">
         <label>Enable Easynews Direct</label>
@@ -732,6 +758,10 @@
       deepbridApiKey: deepbridKey,
       externalResultMode: document.getElementById('externalResultMode').value,
       directLinksOnly: document.getElementById('directLinksOnly').value === 'true',
+      deepbridUsenetFinderEnabled: document.getElementById('deepbridUsenetFinderEnabled').value === 'true',
+      deepbridWebCookie: document.getElementById('deepbridWebCookie').value.trim(),
+      deepbridUsenetFinderMaxResults: Math.min(Math.max(parseInt(document.getElementById('deepbridUsenetFinderMaxResults').value, 10) || 4, 1), 10),
+      deepbridUsenetFinderMaxProcess: Math.min(Math.max(parseInt(document.getElementById('deepbridUsenetFinderMaxProcess').value, 10) || 5, 1), 12),
       easynewsEnabled: document.getElementById('easynewsEnabled').value === 'true',
       easynewsUsername: document.getElementById('easynewsUsername').value.trim(),
       easynewsPassword: document.getElementById('easynewsPassword').value,

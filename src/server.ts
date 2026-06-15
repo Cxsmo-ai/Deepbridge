@@ -10,6 +10,7 @@ import { nanoid } from "nanoid";
 import { manifest } from "./stremio/manifest";
 import { DeepbridClient, MediaRequest } from "./deepbrid/apiClient";
 import { getOfficialDeepbridSources } from "./deepbrid/officialAddon";
+import { getDeepbridUsenetFinderSources, getLastDeepbridUsenetFinderStats } from "./deepbrid/usenetFinder";
 import { formatStreams } from "./stremio/formatStreams";
 import { getIndexerSources, getLastIndexerSearchStats } from "./indexer/search";
 import { getEasynewsDirectSources, getLastEasynewsDirectStats } from "./easynews/direct";
@@ -124,6 +125,7 @@ function cacheHealth() {
     },
     deepbridAdd: lastPregrabStats,
     indexerSearch: getLastIndexerSearchStats(),
+    deepbridUsenetFinder: getLastDeepbridUsenetFinderStats(),
     easynewsDirect: getLastEasynewsDirectStats(),
     newshostingDirect: getLastNewshostingStats(),
     torrents: getLastTorrentStats(),
@@ -797,8 +799,9 @@ async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, 
     const client = new DeepbridClient(apiKey);
 
     const publicToken = token || "default_token";
-    const [officialResult, indexerResult, easynewsResult, newshostingResult, torrentResult, upstreamAddonResult] = await Promise.allSettled([
+    const [officialResult, finderResult, indexerResult, easynewsResult, newshostingResult, torrentResult, upstreamAddonResult] = await Promise.allSettled([
       getOfficialDeepbridSources(client, media, userConfig),
+      getDeepbridUsenetFinderSources(media, userConfig),
       getIndexerSources(client, media, userConfig),
       getEasynewsDirectSources(media, userConfig),
       getNewshostingSources(media, userConfig, dynamicBaseUrl, publicToken),
@@ -806,6 +809,7 @@ async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, 
       getUpstreamAddonSources(media, userConfig, dynamicBaseUrl, publicToken)
     ]);
     const officialCandidates = officialResult.status === "fulfilled" ? officialResult.value : [];
+    const finderCandidates = finderResult.status === "fulfilled" ? finderResult.value : [];
     const indexerCandidates = indexerResult.status === "fulfilled" ? indexerResult.value : [];
     const easynewsDirectCandidates = easynewsResult.status === "fulfilled" ? easynewsResult.value : [];
     const newshostingCandidates = newshostingResult.status === "fulfilled" ? newshostingResult.value : [];
@@ -833,6 +837,7 @@ async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, 
     const candidateGroups = directLinksOnly
       ? [
           dedupeCandidates(officialCandidates),
+          dedupeCandidates(finderCandidates),
           dedupeCandidates(externalCandidates),
           dedupeCandidates(easynewsDirectCandidates),
           dedupeCandidates(torrentCandidates),
@@ -841,6 +846,7 @@ async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, 
       : [
           dedupeCandidates([
             ...officialCandidates,
+            ...finderCandidates,
             ...externalCandidates,
             ...easynewsDirectCandidates,
             ...torrentCandidates,
@@ -941,6 +947,8 @@ app.get("/:token/health", async (request) => {
       easynewsDirectEnabled: Boolean(userConfig?.easynewsEnabled !== false && userConfig?.easynewsUsername && userConfig?.easynewsPassword),
       newshostingDirectConfigured: Boolean(userConfig?.newshostingUsername && userConfig?.newshostingPassword),
       newshostingDirectEnabled: Boolean(userConfig?.newshostingEnabled !== false && userConfig?.newshostingUsername && userConfig?.newshostingPassword),
+      deepbridUsenetFinderConfigured: Boolean(userConfig?.deepbridWebCookie || process.env.DEEPBRID_WEB_COOKIE),
+      deepbridUsenetFinderEnabled: Boolean(userConfig?.deepbridUsenetFinderEnabled !== false && (userConfig?.deepbridWebCookie || process.env.DEEPBRID_WEB_COOKIE)),
       deepbridLibraryEnabled: Boolean(userConfig?.deepbridLibraryEnabled !== false),
       externalTorrents: Array.isArray(userConfig?.externalTorrents) ? userConfig.externalTorrents.length : 0,
       stremioAddons: Array.isArray(userConfig?.stremioAddons) ? userConfig.stremioAddons.length : 0

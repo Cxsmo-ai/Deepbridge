@@ -18,6 +18,13 @@ export interface UserConfig {
   easynewsUsername?: string;
   easynewsPassword?: string;
   easynewsMaxResults?: number;
+  deepbridUsenetFinderEnabled?: boolean;
+  deepbridWebCookie?: string;
+  deepbridWebUserAgent?: string;
+  deepbridUsenetFinderMaxResults?: number;
+  deepbridUsenetFinderMaxProcess?: number;
+  deepbridUsenetFinderSearchTimeout?: number;
+  deepbridUsenetFinderProcessTimeout?: number;
   newshostingEnabled?: boolean;
   newshostingUsername?: string;
   newshostingPassword?: string;

@@ -1,0 +1,48 @@
+import assert from "node:assert/strict";
+import { __deepbridUsenetFinderTest } from "../dist/deepbrid/usenetFinder.js";
+
+const { parseFinderResults, deepFindFiles, selectBestVideo, mergeCookieStrings, hasCloudflareChallenge } = __deepbridUsenetFinderTest;
+
+const html = `
+<table><tbody>
+  <tr data-token="abc123">
+    <td>
+      <div class="result-title-info">
+        <div class="title">Example.Show.S01E02.1080p.WEB-DL.H264-GRP<button>Save</button></div>
+      </div>
+    </td>
+    <td><span class="result-category">TV &gt; HD</span></td>
+    <td><span class="result-size">1.50 GB</span></td>
+    <td><button class="btn-view">View</button></td>
+  </tr>
+</tbody></table>`;
+
+const media = { type: "series", imdbId: "tt1234567", season: 1, episode: 2 };
+const metadata = { title: "Example Show", aliases: ["Example Show"], year: 2026 };
+const results = parseFinderResults(html, media, metadata);
+assert.equal(results.length, 1);
+assert.equal(results[0].token, "abc123");
+assert.equal(results[0].category, "TV > HD");
+assert.equal(results[0].sizeBytes, 1610612736);
+
+const files = deepFindFiles({
+  files: [
+    { name: "Example.Show.S01E02.1080p.WEB-DL.H264-GRP.par2", url: "https://usenet.example/0.par2", size: 1024 },
+    { name: "Example.Show.S01E02.1080p.WEB-DL.H264-GRP.mkv", url: "https://usenet.example/1.mkv", size: 1234 },
+    { name: "Example.Show.S01E03.1080p.WEB-DL.H264-GRP.mkv", url: "https://usenet.example/2.mkv", size: 9999 }
+  ]
+});
+const selected = selectBestVideo(files, media);
+assert.equal(selected.name, "Example.Show.S01E02.1080p.WEB-DL.H264-GRP.mkv");
+
+assert.equal(
+  mergeCookieStrings("PHPSESSID=session1; amember_nr=member1", [
+    { name: "cf_clearance", value: "clearance1" },
+    { name: "PHPSESSID", value: "session1" }
+  ]),
+  "PHPSESSID=session1; amember_nr=member1; cf_clearance=clearance1"
+);
+assert.equal(hasCloudflareChallenge("<title>Just a moment...</title>", 403), true);
+assert.equal(hasCloudflareChallenge("<table><tr data-token=\"x\"></tr></table>", 200), false);
+
+console.log("Deepbrid Usenet Finder parser tests passed");

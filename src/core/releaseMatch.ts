@@ -221,9 +221,10 @@ function sizeRank(candidate: SourceCandidate): number {
 
 function sourcePriority(candidate: SourceCandidate): number {
   if (candidate.origin === "deepbrid-official") return 0;
-  if (candidate.origin === "easynews-direct") return 1;
+  if (candidate.origin === "deepbrid-usenet-finder") return 1;
+  if (candidate.origin === "easynews-direct") return 2;
   if (candidate.origin === "newshosting-direct") return 3;
-  return 2;
+  return 4;
 }
 
 function qualityRank(quality: SourceCandidate["quality"]): number {

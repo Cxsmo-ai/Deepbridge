@@ -9,6 +9,7 @@ export type SourceCandidate = {
 
   origin:
     | "deepbrid-official"
+    | "deepbrid-usenet-finder"
     | "newznab"
     | "prowlarr"
     | "nzbhydra"

@@ -11,6 +11,7 @@ src/core/releaseMatch.ts      Matching, scoring, and dedupe
 src/core/types.ts             Shared types
 src/deepbrid/apiClient.ts     Deepbrid API client
 src/deepbrid/officialAddon.ts Deepbrid official source adapter
+src/deepbrid/usenetFinder.ts  Optional Deepbrid website Usenet Finder source
 src/indexer/search.ts         External indexer search and candidate creation
 src/stremio/formatStreams.ts  Stremio stream card formatting
 src/stremio/manifest.ts       Stremio manifest
@@ -23,6 +24,7 @@ public/index.html             Configuration UI
 Stremio requests /stream/{type}/{id}.json
   │
   ├─ Fetch Deepbrid official streams
+  ├─ Optionally search Deepbrid website Usenet Finder
   ├─ Search configured external indexers
   ├─ Parse/rank/dedupe releases
   ├─ Pregrab selected external NZBs through Deepbrid
