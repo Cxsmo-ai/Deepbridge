@@ -35,6 +35,8 @@ type FinderHttpContext = {
   userAgent: string;
   userConfig?: any;
   cloudflarePrimed?: boolean;
+  browserHeaders: Record<string, string>;
+  explicitBrowserIdentity: boolean;
 };
 
 type ByparrCookie = {
@@ -82,6 +84,54 @@ function finderUserAgent(userConfig?: any): string {
     userConfig?.deepbridWebUserAgent
     || process.env.DEEPBRID_WEB_USER_AGENT
     || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
+  );
+}
+
+const allowedBrowserHeaders = new Set([
+  "accept",
+  "accept-language",
+  "cache-control",
+  "pragma",
+  "referer",
+  "sec-ch-ua",
+  "sec-ch-ua-mobile",
+  "sec-ch-ua-platform",
+  "sec-fetch-dest",
+  "sec-fetch-mode",
+  "sec-fetch-site",
+  "sec-fetch-user",
+  "upgrade-insecure-requests",
+  "user-agent"
+]);
+
+function parseBrowserHeaders(raw: unknown): Record<string, string> {
+  const source = raw || process.env.DEEPBRID_WEB_HEADERS_JSON || "";
+  if (!source) return {};
+  let parsed: any = source;
+  if (typeof source === "string") {
+    try {
+      parsed = JSON.parse(source);
+    } catch {
+      return {};
+    }
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+
+  const headers: Record<string, string> = {};
+  for (const [name, value] of Object.entries(parsed)) {
+    const key = name.toLowerCase();
+    if (!allowedBrowserHeaders.has(key)) continue;
+    const text = Array.isArray(value) ? value.join(", ") : String(value ?? "");
+    if (text.trim()) headers[key] = text.trim();
+  }
+  return headers;
+}
+
+function hasExplicitBrowserIdentity(userConfig: any, browserHeaders: Record<string, string>): boolean {
+  return Boolean(
+    browserHeaders["user-agent"]
+    || userConfig?.deepbridWebUserAgent
+    || process.env.DEEPBRID_WEB_USER_AGENT
   );
 }
 
@@ -284,31 +334,58 @@ async function solveCloudflareWithByparr(targetUrl: string, context: FinderHttpC
   const cookies = data.solution?.cookies || [];
   if (cookies.length === 0) return false;
   context.cookie = mergeCookieStrings(context.cookie, cookies);
-  if (data.solution?.userAgent) context.userAgent = data.solution.userAgent;
+  if (data.solution?.userAgent && !context.explicitBrowserIdentity) context.userAgent = data.solution.userAgent;
   return true;
 }
 
 async function primeCloudflareWithByparr(url: URL, context: FinderHttpContext): Promise<void> {
-  if (context.cloudflarePrimed || !byparrUrl()) return;
+  if (context.cloudflarePrimed || context.explicitBrowserIdentity || !byparrUrl()) return;
   context.cloudflarePrimed = true;
   const solved = await solveCloudflareWithByparr(url.toString(), context, byparrTimeoutMs(context.userConfig));
   if (!solved) throw new Error("deepbrid_finder_cloudflare_challenge");
 }
 
+function makeFinderHeaders(context: FinderHttpContext, accept: string, ajax: boolean): Record<string, string> {
+  const headers: Record<string, string> = {
+    ...context.browserHeaders,
+    Cookie: context.cookie,
+    "User-Agent": context.browserHeaders["user-agent"] || context.userAgent,
+    Accept: context.browserHeaders.accept || accept
+  };
+  if (ajax) {
+    headers["X-Requested-With"] = "XMLHttpRequest";
+    headers.Accept = accept;
+    delete headers["upgrade-insecure-requests"];
+    delete headers["sec-fetch-user"];
+  }
+  return headers;
+}
+
 async function requestFinderText(url: URL, context: FinderHttpContext, timeoutMs: number, accept: string, ajax = false): Promise<{ statusCode: number; text: string }> {
   await primeCloudflareWithByparr(url, context);
 
-  const headers: Record<string, string> = {
-    Cookie: context.cookie,
-    "User-Agent": context.userAgent,
-    Accept: accept
-  };
-  if (ajax) headers["X-Requested-With"] = "XMLHttpRequest";
-
-  const res = await request(url, {
-    headers,
-    signal: AbortSignal.timeout(timeoutMs)
-  });
+  let res;
+  try {
+    res = await request(url, {
+      headers: makeFinderHeaders(context, accept, ajax),
+      signal: AbortSignal.timeout(timeoutMs)
+    });
+  } catch (error) {
+    if (!context.cloudflarePrimed && byparrUrl()) {
+      context.cloudflarePrimed = true;
+      const solved = await solveCloudflareWithByparr(url.toString(), context, byparrTimeoutMs(context.userConfig));
+      if (solved) {
+        res = await request(url, {
+          headers: makeFinderHeaders(context, accept, ajax),
+          signal: AbortSignal.timeout(timeoutMs)
+        });
+      } else {
+        throw new Error("deepbrid_finder_cloudflare_challenge");
+      }
+    } else {
+      throw error;
+    }
+  }
   const text = await res.body.text();
   if (!hasCloudflareChallenge(text, res.statusCode)) {
     return { statusCode: res.statusCode, text };
@@ -317,15 +394,8 @@ async function requestFinderText(url: URL, context: FinderHttpContext, timeoutMs
   const solved = await solveCloudflareWithByparr(url.toString(), context, timeoutMs);
   if (!solved) throw new Error("deepbrid_finder_cloudflare_challenge");
 
-  const retryHeaders: Record<string, string> = {
-    Cookie: context.cookie,
-    "User-Agent": context.userAgent,
-    Accept: accept
-  };
-  if (ajax) retryHeaders["X-Requested-With"] = "XMLHttpRequest";
-
   const retry = await request(url, {
-    headers: retryHeaders,
+    headers: makeFinderHeaders(context, accept, ajax),
     signal: AbortSignal.timeout(timeoutMs)
   });
   const retryText = await retry.body.text();
@@ -432,8 +502,15 @@ async function processFinderToken(token: string, context: FinderHttpContext, tim
 export async function getDeepbridUsenetFinderSources(media: MediaRequest, userConfig?: any): Promise<SourceCandidate[]> {
   const startedAt = Date.now();
   const cookie = finderCookie(userConfig);
-  const userAgent = finderUserAgent(userConfig);
-  const httpContext: FinderHttpContext = { cookie, userAgent, userConfig };
+  const browserHeaders = parseBrowserHeaders(userConfig?.deepbridWebHeaders);
+  const userAgent = browserHeaders["user-agent"] || finderUserAgent(userConfig);
+  const httpContext: FinderHttpContext = {
+    cookie,
+    userAgent,
+    userConfig,
+    browserHeaders,
+    explicitBrowserIdentity: hasExplicitBrowserIdentity(userConfig, browserHeaders)
+  };
   const stats: FinderStats = {
     startedAt: new Date(startedAt).toISOString(),
     finishedAt: "",
@@ -560,5 +637,6 @@ export const __deepbridUsenetFinderTest = {
   deepFindFiles,
   selectBestVideo,
   mergeCookieStrings,
-  hasCloudflareChallenge
+  hasCloudflareChallenge,
+  parseBrowserHeaders
 };

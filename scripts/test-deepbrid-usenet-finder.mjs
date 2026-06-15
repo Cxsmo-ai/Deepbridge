@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { __deepbridUsenetFinderTest } from "../dist/deepbrid/usenetFinder.js";
 
-const { parseFinderResults, deepFindFiles, selectBestVideo, mergeCookieStrings, hasCloudflareChallenge } = __deepbridUsenetFinderTest;
+const { parseFinderResults, deepFindFiles, selectBestVideo, mergeCookieStrings, hasCloudflareChallenge, parseBrowserHeaders } = __deepbridUsenetFinderTest;
 
 const html = `
 <table><tbody>
@@ -44,5 +44,20 @@ assert.equal(
 );
 assert.equal(hasCloudflareChallenge("<title>Just a moment...</title>", 403), true);
 assert.equal(hasCloudflareChallenge("<table><tr data-token=\"x\"></tr></table>", 200), false);
+
+assert.deepEqual(
+  parseBrowserHeaders({
+    "User-Agent": "Edge UA",
+    "Accept-Language": "en-US,en;q=0.9",
+    Cookie: "secret",
+    Host: "www.deepbrid.com",
+    "Sec-CH-UA-Platform": "\"Windows\""
+  }),
+  {
+    "user-agent": "Edge UA",
+    "accept-language": "en-US,en;q=0.9",
+    "sec-ch-ua-platform": "\"Windows\""
+  }
+);
 
 console.log("Deepbrid Usenet Finder parser tests passed");

@@ -21,6 +21,7 @@ export interface UserConfig {
   deepbridUsenetFinderEnabled?: boolean;
   deepbridWebCookie?: string;
   deepbridWebUserAgent?: string;
+  deepbridWebHeaders?: Record<string, string> | string;
   deepbridByparrTimeout?: number;
   deepbridUsenetFinderMaxResults?: number;
   deepbridUsenetFinderMaxProcess?: number;
