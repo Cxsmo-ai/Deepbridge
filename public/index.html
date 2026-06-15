@@ -384,7 +384,26 @@
       </div>
       <div class="form-group" style="margin-bottom: 15px;">
         <label>Deepbrid Website Session Cookie</label>
-        <input type="password" id="deepbridWebCookie" placeholder="Optional. Prefer server env for hosted installs.">
+        <input type="password" id="deepbridWebCookie" placeholder="e.g. PHPSESSID=...; amember_nr=...">
+        <details style="margin-top: 8px; background: rgba(0,0,0,0.15); border-radius: 6px; padding: 10px 14px; border: 1px solid var(--panel-border);">
+          <summary style="color: var(--accent); cursor: pointer; font-size: 0.85rem; font-weight: 600; outline: none; user-select: none;">
+            ❓ How to get your Session Cookie
+          </summary>
+          <div style="margin-top: 12px; font-size: 0.8rem; color: var(--text-muted); line-height: 1.6;">
+            <p style="margin-bottom: 10px;">Because the Usenet Finder is not part of the official API, the addon needs to securely borrow your browser session.</p>
+            <ol style="padding-left: 20px; margin-bottom: 12px;">
+              <li style="margin-bottom: 4px;">Log into the <a href="https://www.deepbrid.com/usenet-finder" target="_blank" style="color: var(--primary-hover); text-decoration: none;">Deepbrid Usenet Finder</a> on your PC.</li>
+              <li style="margin-bottom: 4px;">Press <strong>F12</strong> to open Developer Tools, and navigate to the <strong>Network</strong> tab.</li>
+              <li style="margin-bottom: 4px;">Type a movie (like "Titanic") into the Deepbrid search box and press Enter.</li>
+              <li style="margin-bottom: 4px;">In the Network tab, a request starting with <code>usenet-finder?ajax=1</code> will appear. <strong>Right Click it &rarr; Copy &rarr; Copy as cURL</strong>.</li>
+              <li style="margin-bottom: 4px;">Paste the copied text into Notepad. Look for the section that starts with <code>-b</code> or <code>-H "cookie: ... "</code>.</li>
+              <li style="margin-bottom: 4px;">Copy <strong>ONLY</strong> the string inside the quotes (it will start with <code>PHPSESSID=...</code>) and paste it into the field above.</li>
+            </ol>
+            <div style="background: rgba(255, 118, 117, 0.1); border-left: 3px solid var(--danger); padding: 8px 12px; border-radius: 4px;">
+              <span style="color: var(--danger); font-weight: 600;">Note:</span> If you explicitly click "Log Out" on Deepbrid, this cookie will expire. Close the tab instead of logging out!
+            </div>
+          </div>
+        </details>
       </div>
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
         <div class="form-group" style="margin-bottom: 0;">
