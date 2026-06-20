@@ -40,6 +40,8 @@ Image name:
 pickymarker/deepbridge:latest
 ```
 
+`latest` is a multi-architecture manifest with native `linux/amd64` and `linux/arm64` images. Docker and Podman select the correct image automatically, including on Oracle ARM VMs.
+
 Pull command:
 
 ```bash
@@ -70,6 +72,8 @@ Deepbridge is built for people who want a simple addon URL, a clean configuratio
 - Built-in Newshosting source configured directly in the dashboard.
 - Newshosting runs inside Deepbridge, generates NZBs on demand, and submits them to Deepbrid without a separate indexer API key.
 - Deepbrid torrent library support with fresh link refresh at playback time.
+- My Library Movies, My Library TV Shows, and My Library Anime catalogs.
+- Each ready library torrent has its own catalog entry and exact direct playback refresh.
 - External magnet support that adds to Deepbrid on demand.
 - Direct-links-only mode hides unresolved addon proxy links by default.
 - Optional external Usenet indexer support.
@@ -85,6 +89,18 @@ Deepbridge is built for people who want a simple addon URL, a clean configuratio
 - Health endpoints for addon status, local resolve cache, and sanitized Deepbrid API/download-cache checks.
 - Sanitized Easynews direct stats in health output without exposing Easynews credentials or playback URLs.
 - GitHub-ready project structure with CI, support, security, and contribution templates.
+
+## My Library catalogs
+
+Deepbridge exposes three private Stremio catalogs when a Deepbrid API key is configured:
+
+- **My Library Movies**
+- **My Library TV Shows**
+- **My Library Anime**
+
+The catalog index reads ready torrents from your Deepbrid library, enriches them with Cinemeta metadata, and keeps the torrent ID rather than caching a volatile playback URL. Each catalog card represents a specific torrent release. When Stremio starts playback, Deepbridge refreshes that exact torrent through Deepbrid and returns its current direct Deepbrid/myfast URL.
+
+Queued, processing, failed, or linkless torrents are deliberately hidden. This ensures every visible My Library item is eligible for direct playback. Use the dashboard's **My Library Catalogs** toggle to disable the catalogs for an installation link.
 
 ## Built-in Easynews support
 
