@@ -7,5 +7,5 @@
   "host_permissions": ["https://www.deepbrid.com/*", "https://57mwpz.deepascension.net/*"],
   "background": { "service_worker": "background.js" },
   "content_scripts": [{ "matches": ["https://57mwpz.deepascension.net/*/finder-auth"], "js": ["pair.js"] }],
-  "action": { "default_title": "Deepbridge Finder Bridge" }
+  "action": { "default_title": "Deepbridge Finder Bridge", "default_popup": "popup.html" }
 }
