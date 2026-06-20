@@ -406,6 +406,10 @@ function decodeJsonPayload(encoded: string): any {
   return JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
 }
 
+function encodeJsonPayload(payload: unknown): string {
+  return Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+}
+
 function normalizePlayableUrl(url: string): string {
   return new URL(url, "https://www.deepbrid.com").toString();
 }
