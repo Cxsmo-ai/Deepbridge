@@ -203,15 +203,22 @@ async function getLibraryIndex(client: DeepbridClient, apiKey: string, timeoutMs
 }
 
 function catalogMeta(item: LibraryItem): Record<string, unknown> {
+  // Catalog entries must retain their public metadata ID. Clients such as Wako
+  // use that ID when asking every installed addon for streams; a private
+  // torrent ID prevents the other addons from recognizing the title.
+  const mediaId = item.metadata.id;
+  const videoId = item.type === "movie"
+    ? mediaId
+    : `${mediaId}:${item.season || 1}:${item.episode || 1}`;
   return {
     ...item.metadata,
-    id: item.id,
+    id: mediaId,
     type: item.type,
     name: item.releaseTitle,
     releaseInfo: item.metadata.releaseInfo,
     behaviorHints: {
       ...(item.metadata.behaviorHints || {}),
-      defaultVideoId: item.type === "movie" ? item.id : `${item.id}:${item.season || 1}:${item.episode || 1}`
+      defaultVideoId: videoId
     }
   };
 }
