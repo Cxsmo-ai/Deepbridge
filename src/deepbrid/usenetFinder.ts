@@ -388,7 +388,11 @@ function makeFinderHeaders(context: FinderHttpContext, accept: string, ajax: boo
 }
 
 async function requestFinderText(url: URL, context: FinderHttpContext, timeoutMs: number, accept: string, ajax = false): Promise<{ statusCode: number; text: string }> {
-  await primeCloudflareWithByparr(url, context);
+  // A user-supplied browser session should be attempted as-is. Byparr is a
+  // Finder-only challenge fallback, not a mandatory proxy for authenticated requests.
+  if (!context.explicitBrowserIdentity) {
+    await primeCloudflareWithByparr(url, context);
+  }
 
   let res;
   try {
