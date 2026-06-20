@@ -91,15 +91,24 @@ const allowedBrowserHeaders = new Set([
   "accept",
   "accept-language",
   "cache-control",
+  "dnt",
   "pragma",
+  "priority",
   "referer",
   "sec-ch-ua",
+  "sec-ch-ua-arch",
+  "sec-ch-ua-bitness",
+  "sec-ch-ua-full-version",
+  "sec-ch-ua-full-version-list",
   "sec-ch-ua-mobile",
+  "sec-ch-ua-model",
   "sec-ch-ua-platform",
+  "sec-ch-ua-platform-version",
   "sec-fetch-dest",
   "sec-fetch-mode",
   "sec-fetch-site",
   "sec-fetch-user",
+  "sec-gpc",
   "upgrade-insecure-requests",
   "user-agent"
 ]);
@@ -428,6 +437,8 @@ async function searchFinder(query: string, context: FinderHttpContext, timeoutMs
   url.searchParams.set("do", "search");
   url.searchParams.set("q", query);
   url.searchParams.set("cat", "");
+  url.searchParams.set("offset", "0");
+  url.searchParams.set("limit", "15");
   const { statusCode, text: html } = await requestFinderText(url, context, timeoutMs, "application/json,text/javascript,*/*", true);
   if (statusCode === 401 || statusCode === 403 || hasAuthFailure(html)) {
     throw new Error("deepbrid_finder_auth_failed");
@@ -586,12 +597,10 @@ export async function getDeepbridUsenetFinderSources(media: MediaRequest, userCo
     .map(result => {
       const parsed = parseRelease(result.title);
       const match = scoreReleaseMatch(result.title, media, parsed, metadata);
-      // console.log("DEBUG UsenetFinder Result:", result.title, "Score:", match.score, "Reason:", match.reason);
       return { result, parsed, match };
     })
     .filter(item => {
       const passed = item.match.score >= (media.type === "series" ? 650 : 600);
-      console.log("DEBUG UsenetFinder Filter:", item.result.title, "Passed:", passed, "Score:", item.match.score);
       return passed;
     })
     .sort((a, b) => b.result.score - a.result.score)

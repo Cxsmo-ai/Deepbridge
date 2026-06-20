@@ -44,13 +44,21 @@ assert.deepEqual(
   parseBrowserHeaders({
     "User-Agent": "Edge UA",
     "Accept-Language": "en-US,en;q=0.9",
+    DNT: "1",
     Cookie: "secret",
     Host: "www.deepbrid.com",
+    Priority: "u=1, i",
+    "Sec-CH-UA-Arch": "\"x86\"",
+    "Sec-CH-UA-Full-Version": "\"149.0.4022.69\"",
     "Sec-CH-UA-Platform": "\"Windows\""
   }),
   {
     "user-agent": "Edge UA",
     "accept-language": "en-US,en;q=0.9",
+    dnt: "1",
+    priority: "u=1, i",
+    "sec-ch-ua-arch": "\"x86\"",
+    "sec-ch-ua-full-version": "\"149.0.4022.69\"",
     "sec-ch-ua-platform": "\"Windows\""
   }
 );
