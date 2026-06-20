@@ -60,8 +60,6 @@ app.register(fastifyStatic, {
   prefix: "/static/", 
 });
 
-app.get("/", async (_request, reply) => reply.sendFile("index.html"));
-
 const baseUrl = process.env.BASE_URL || "http://localhost:7000";
 
 function bridgeConfigOrReply(token: string, reply: any) {
