@@ -22,7 +22,7 @@ import { decodeConfig } from "./core/configDecoder";
 import { dedupeCandidates } from "./core/releaseMatch";
 import { parseRelease } from "./core/parseRelease";
 import { SourceCandidate } from "./core/types";
-import { browserBridgeStatus, pairBrowserBridge, pollBrowserBridge, respondBrowserBridge } from "./deepbrid/browserBridge";
+import { browserBridgeStatus, pairBrowserBridge, pollBrowserBridge, respondBrowserBridge, waitForBrowserBridgeRequest } from "./deepbrid/browserBridge";
 
 dotenv.config();
 
@@ -816,7 +816,7 @@ app.get("/:token/finder-bridge/status", async (request, reply) => {
 app.get("/:token/finder-bridge/poll", async (request, reply) => {
   const config = bridgeConfigOrReply((request.params as any).token, reply);
   if (!config) return;
-  const requestItem = pollBrowserBridge(config);
+  const requestItem = (request.query as any)?.wait === "1" ? await waitForBrowserBridgeRequest(config) : pollBrowserBridge(config);
   return { request: requestItem || null, ...browserBridgeStatus(config) };
 });
 

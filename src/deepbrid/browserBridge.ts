@@ -3,7 +3,7 @@ import { nanoid } from "nanoid";
 type BridgeConfig = { deepbridFinderBridgeEnabled?: boolean; deepbridFinderBridgeId?: string; deepbridFinderBridgeSecret?: string };
 type BridgeRequest = { id: string; url: string; accept: string; ajax: boolean };
 type PendingRequest = { request: BridgeRequest; resolve: (value: { statusCode: number; text: string }) => void; reject: (error: Error) => void; timer: NodeJS.Timeout };
-type BridgeClient = { secret: string; queue: BridgeRequest[]; pending: Map<string, PendingRequest>; lastSeenAt: number };
+type BridgeClient = { secret: string; queue: BridgeRequest[]; pollWaiters: Array<(request?: BridgeRequest) => void>; pending: Map<string, PendingRequest>; lastSeenAt: number };
 
 const clients = new Map<string, BridgeClient>();
 
@@ -18,7 +18,7 @@ function clientFor(value: BridgeConfig, create = false): BridgeClient | undefine
   if (!pair) return undefined;
   let client = clients.get(pair.id);
   if (!client && create) {
-    client = { secret: pair.secret, queue: [], pending: new Map(), lastSeenAt: Date.now() };
+    client = { secret: pair.secret, queue: [], pollWaiters: [], pending: new Map(), lastSeenAt: Date.now() };
     clients.set(pair.id, client);
   }
   if (!client || client.secret !== pair.secret) return undefined;
@@ -43,6 +43,23 @@ export function pollBrowserBridge(value: BridgeConfig): BridgeRequest | undefine
   return client.queue.shift();
 }
 
+export function waitForBrowserBridgeRequest(value: BridgeConfig, timeoutMs = 25000): Promise<BridgeRequest | undefined> {
+  const client = clientFor(value, true);
+  if (!client) return Promise.resolve(undefined);
+  const queued = client.queue.shift();
+  if (queued) return Promise.resolve(queued);
+  return new Promise(resolve => {
+    let waiter: (request?: BridgeRequest) => void;
+    const timer = setTimeout(() => {
+      const index = client.pollWaiters.indexOf(waiter);
+      if (index >= 0) client.pollWaiters.splice(index, 1);
+      resolve(undefined);
+    }, timeoutMs);
+    waiter = request => { clearTimeout(timer); resolve(request); };
+    client.pollWaiters.push(waiter);
+  });
+}
+
 export function respondBrowserBridge(value: BridgeConfig, id: string, statusCode: number, text: string): boolean {
   const client = clientFor(value);
   const pending = client?.pending.get(id);
@@ -64,7 +81,9 @@ export function requestBrowserBridge(value: BridgeConfig, url: string, accept: s
       reject(new Error("deepbrid_finder_browser_timeout"));
     }, Math.max(1000, timeoutMs));
     client.pending.set(request.id, { request, resolve, reject, timer });
-    client.queue.push(request);
+    const waiter = client.pollWaiters.shift();
+    if (waiter) waiter(request);
+    else client.queue.push(request);
   });
 }
 

@@ -26,7 +26,7 @@ async function poll() {
   if (!bridgeRoot || polling) return;
   polling = true;
   try {
-    const response = await api("poll");
+    const response = await api("poll?wait=1");
     const body = await response.json();
     if (body.request) {
       let result;
