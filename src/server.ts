@@ -16,7 +16,7 @@ import { getIndexerSources, getLastIndexerSearchStats } from "./indexer/search";
 import { getEasynewsDirectSources, getLastEasynewsDirectStats } from "./easynews/direct";
 import { getLastNewshostingStats, getNewshostingSources } from "./newshosting/direct";
 import { getLastTorrentStats, getTorrentSources, normalizeTorrent } from "./deepbrid/torrents";
-import { getLibraryCatalog, getLibraryDirectStream, getLibraryMeta, isLibraryItemId, LibraryCatalogId } from "./deepbrid/libraryCatalog";
+import { getLibraryCatalog, getLibraryDirectStream, getLibraryMeta, isLibraryItemId, LibraryCatalogId, parseLibraryItemId } from "./deepbrid/libraryCatalog";
 import { getLastUpstreamAddonStats, getUpstreamAddonSources } from "./stremio/upstreamAddons";
 import { decodeConfig } from "./core/configDecoder";
 import { dedupeCandidates } from "./core/releaseMatch";
@@ -174,10 +174,19 @@ async function handleLibraryMeta(token: string | undefined, id: string) {
   return getLibraryMeta(new DeepbridClient(apiKey), apiKey, id, libraryCatalogTimeout(userConfig));
 }
 
-async function handleLibraryStream(token: string | undefined, id: string) {
+async function handleLibraryStream(token: string | undefined, id: string, requestBaseUrl?: string) {
   const { apiKey, userConfig } = getDeepbridRequestContext(token);
   if (!apiKey || userConfig?.deepbridLibraryCatalogsEnabled === false) return { streams: [] };
-  return getLibraryDirectStream(new DeepbridClient(apiKey), id, Number(userConfig?.torrentInfoTimeout || 12000) || 12000);
+  const direct = await getLibraryDirectStream(new DeepbridClient(apiKey), id, Number(userConfig?.torrentInfoTimeout || 12000) || 12000);
+  const parsed = parseLibraryItemId(id);
+  if (!token || !requestBaseUrl || !parsed || direct.streams.length === 0) return direct;
+  const payload = encodeJsonPayload({ id: parsed.torrentId });
+  return {
+    streams: direct.streams.map(stream => ({
+      ...stream,
+      url: `${requestBaseUrl}/${token}/torrent/play/${payload}`
+    }))
+  };
 }
 
 function newshostingNzbErrorCategory(error: unknown): string {
@@ -986,7 +995,7 @@ function parseSeriesRouteId(id: string): { imdbId: string; season: number; episo
 
 app.get("/stream/movie/:imdbId.json", async (request, reply) => {
   const { imdbId } = request.params as { imdbId: string };
-  if (isLibraryItemId(imdbId)) return handleLibraryStream(undefined, imdbId);
+  if (isLibraryItemId(imdbId)) return handleLibraryStream(undefined, imdbId, getRequestBaseUrl(request));
   app.log.info({ event: "stream_request", mediaType: "movie", imdbId });
   const dynamicBaseUrl = getRequestBaseUrl(request);
   return await handleStreamRequest({ type: "movie", imdbId }, dynamicBaseUrl);
@@ -994,7 +1003,7 @@ app.get("/stream/movie/:imdbId.json", async (request, reply) => {
 
 app.get("/stream/series/:id.json", async (request, reply) => {
   const { id } = request.params as { id: string };
-  if (isLibraryItemId(id)) return handleLibraryStream(undefined, id);
+  if (isLibraryItemId(id)) return handleLibraryStream(undefined, id, getRequestBaseUrl(request));
   app.log.info({ event: "stream_request", mediaType: "series", id });
   
   const dynamicBaseUrl = getRequestBaseUrl(request);
@@ -1009,7 +1018,7 @@ app.get("/stream/series/:id.json", async (request, reply) => {
 
 app.get("/:token/stream/movie/:imdbId.json", async (request, reply) => {
   const { token, imdbId } = request.params as { token: string, imdbId: string };
-  if (isLibraryItemId(imdbId)) return handleLibraryStream(token, imdbId);
+  if (isLibraryItemId(imdbId)) return handleLibraryStream(token, imdbId, getRequestBaseUrl(request));
   app.log.info({ event: "stream_request", mediaType: "movie", imdbId });
   const dynamicBaseUrl = getRequestBaseUrl(request);
   return await handleStreamRequest({ type: "movie", imdbId }, dynamicBaseUrl, token);
@@ -1017,7 +1026,7 @@ app.get("/:token/stream/movie/:imdbId.json", async (request, reply) => {
 
 app.get("/:token/stream/series/:id.json", async (request, reply) => {
   const { token, id } = request.params as { token: string, id: string };
-  if (isLibraryItemId(id)) return handleLibraryStream(token, id);
+  if (isLibraryItemId(id)) return handleLibraryStream(token, id, getRequestBaseUrl(request));
   app.log.info({ event: "stream_request", mediaType: "series", id });
   
   const dynamicBaseUrl = getRequestBaseUrl(request);
