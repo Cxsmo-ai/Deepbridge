@@ -17,11 +17,11 @@
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue?style=for-the-badge"></a>
 </p>
 <p align="center">
-  <a href="#quick-start">Quick start</a> Â·
-  <a href="docs/DOCKER.md">Docker</a> Â·
-  <a href="docs/CONFIGURATION.md">Configuration</a> Â·
-  <a href="docs/TROUBLESHOOTING.md">Troubleshooting</a> Â·
-  <a href="docs/METRICS.md">Live metrics</a> Â·
+  <a href="#quick-start">Quick start</a> | 
+  <a href="docs/DOCKER.md">Docker</a> | 
+  <a href="docs/CONFIGURATION.md">Configuration</a> | 
+  <a href="docs/TROUBLESHOOTING.md">Troubleshooting</a> | 
+  <a href="docs/METRICS.md">Live metrics</a> | 
   <a href="SECURITY.md">Security</a>
 </p>
 
@@ -315,11 +315,11 @@ Deepbrid API keys, Easynews credentials, external indexers, timeout overrides, a
 
 ### Per-user timeout overrides
 
-The dashboard includes a **â± Timeout Settings** section where users can override the default timeouts without needing server-level environment variables. This is useful when custom Newznab or NZBHydra indexers are slow and cause `TimeoutError: The operation was aborted due to timeout` errors.
+The dashboard includes a **Ã¢ÂÂ± Timeout Settings** section where users can override the default timeouts without needing server-level environment variables. This is useful when custom Newznab or NZBHydra indexers are slow and cause `TimeoutError: The operation was aborted due to timeout` errors.
 
-- **Official Streams (ms)** â€” Timeout for fetching official Deepbrid streams. Default: 4500ms.
-- **Resolve Links (ms)** â€” Timeout for resolving NZB links through Deepbrid. Default: 4500ms.
-- **Indexer Search (ms)** â€” Timeout for Newznab/NZBHydra indexer searches. Default: 12000ms.
+- **Official Streams (ms)** Ã¢â‚¬â€ Timeout for fetching official Deepbrid streams. Default: 4500ms.
+- **Resolve Links (ms)** Ã¢â‚¬â€ Timeout for resolving NZB links through Deepbrid. Default: 4500ms.
+- **Indexer Search (ms)** Ã¢â‚¬â€ Timeout for Newznab/NZBHydra indexer searches. Default: 12000ms.
 
 Set to `0` to use server defaults. Per-user values take priority over environment variables.
 
@@ -329,22 +329,22 @@ See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 ```text
 Stremio
-  â”‚
-  â–¼
+  Ã¢â€â€š
+  Ã¢â€“Â¼
 Deepbridge addon
-  â”œâ”€ Deepbrid official addon sources
-  â”œâ”€ Built-in Easynews direct source
-  â”œâ”€ External Newznab-compatible indexers resolved through Deepbrid
-  â”œâ”€ Release parsing/ranking/deduplication
-  â”œâ”€ External pregrab via Deepbrid
-  â””â”€ Direct final Deepbrid/myfast or Easynews CDN playback URLs
+  Ã¢â€Å“Ã¢â€â‚¬ Deepbrid official addon sources
+  Ã¢â€Å“Ã¢â€â‚¬ Built-in Easynews direct source
+  Ã¢â€Å“Ã¢â€â‚¬ External Newznab-compatible indexers resolved through Deepbrid
+  Ã¢â€Å“Ã¢â€â‚¬ Release parsing/ranking/deduplication
+  Ã¢â€Å“Ã¢â€â‚¬ External pregrab via Deepbrid
+  Ã¢â€â€Ã¢â€â‚¬ Direct final Deepbrid/myfast or Easynews CDN playback URLs
 ```
 
 Deepbridge is intentionally not a video proxy. It prepares stream results and returns direct playback URLs so media bandwidth comes from Deepbrid or Easynews servers, not your addon host.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## ðŸŽ Support The Project: Deepbrid Referral Guide
+## Ã°Å¸Å½Â Support The Project: Deepbrid Referral Guide
 
 <p align="center">
   <a href="https://www.deepbrid.com/aff/go/pickymarker4906?i=4" target="_blank" rel="noopener noreferrer">
@@ -357,10 +357,10 @@ This vendor package is **100% free and open-source**. However, maintaining and u
 The **ONLY** way to support this project and ensure its continued development is by using our **Deepbrid Referral Link** when you sign up or renew your account.
 
 <p align="center">
-  <strong><a href="https://www.deepbrid.com/aff/go/pickymarker4906">ðŸ‘‰ CLICK HERE TO SIGN UP FOR DEEPBRID ðŸ‘ˆ</a></strong>
+  <strong><a href="https://www.deepbrid.com/aff/go/pickymarker4906">Ã°Å¸â€˜â€° CLICK HERE TO SIGN UP FOR DEEPBRID Ã°Å¸â€˜Ë†</a></strong>
 </p>
 
-### ðŸ›‘ How to Properly Use the Referral Link (IMPORTANT)
+### Ã°Å¸â€ºâ€˜ How to Properly Use the Referral Link (IMPORTANT)
 
 To ensure the referral tracks correctly and supports the project, please follow these exact steps:
 
