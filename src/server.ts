@@ -807,6 +807,12 @@ app.post("/:token/finder-bridge/pair", async (request, reply) => {
   return { ...browserBridgeStatus(config) };
 });
 
+app.get("/:token/finder-bridge/status", async (request, reply) => {
+  const config = bridgeConfigOrReply((request.params as any).token, reply);
+  if (!config) return;
+  return browserBridgeStatus(config);
+});
+
 app.get("/:token/finder-bridge/poll", async (request, reply) => {
   const config = bridgeConfigOrReply((request.params as any).token, reply);
   if (!config) return;
