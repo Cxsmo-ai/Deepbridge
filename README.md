@@ -16,11 +16,11 @@
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/Cxsmo-ai/Deepbridge?style=for-the-badge"></a>
 </p>
 <p align="center">
-  <a href="#quick-start">Quick start</a> ·
-  <a href="docs/DOCKER.md">Docker</a> ·
-  <a href="docs/CONFIGURATION.md">Configuration</a> ·
-  <a href="docs/TROUBLESHOOTING.md">Troubleshooting</a> ·
-  <a href="docs/METRICS.md">Live metrics</a> ·
+  <a href="#quick-start">Quick start</a> Â·
+  <a href="docs/DOCKER.md">Docker</a> Â·
+  <a href="docs/CONFIGURATION.md">Configuration</a> Â·
+  <a href="docs/TROUBLESHOOTING.md">Troubleshooting</a> Â·
+  <a href="docs/METRICS.md">Live metrics</a> Â·
   <a href="SECURITY.md">Security</a>
 </p>
 
@@ -154,28 +154,24 @@ Newshosting behavior:
 - Deepbrid receives an addon-hosted NZB URL; there is no separate Newznab API key.
 - Stream cards are labeled `Newshosting` when the result came from this built-in source.
 
-## Deepbrid Usenet Finder support
+## Deepbrid Usenet Finder bridge
 
-Deepbridge now natively interfaces with Deepbrid's premium website **Usenet Finder** feature. This allows you to scrape Usenet results directly from Deepbrid's website without needing any external indexers.
+Deepbrid's premium website Finder is accessed through a paired browser extension, not through copied cookies, cURL commands, server-side Cloudflare solvers, or stored Google credentials.
 
-Configure the Usenet Finder from the Deepbridge dashboard:
+### Install and pair the MV2 extension
 
-```text
-Deepbrid Usenet Finder Source
-  Enable Deepbrid Usenet Finder
-  Deepbrid Website Session Cookie
-  Deepbrid Byparr URL
-  Max Finder Results
-  Max Finder Process Attempts
-```
+1. Download `deepbridge-finder-bridge-mv2.zip` from the latest GitHub release and extract it.
+2. In an MV2-capable browser, enable Developer mode and use **Load unpacked** to select the extracted folder.
+3. Open `https://www.deepbrid.com/usenet-finder` and sign in normally. Keep this tab open.
+4. In the Deepbridge dashboard, enable **Browser Extension Finder Bridge** and generate the install link.
+5. Open the generated **Deepbrid Browser Extension Pairing URL** in the same browser profile.
+6. Click the extension icon and confirm both messages:
+   - `Paired with Oracle: persistent bridge active.`
+   - `Authenticated Deepbrid tab detected.`
 
-Usenet Finder behavior:
-- Deepbridge securely borrows your browser session cookie to bypass Deepbrid's website protections.
-- **IMPORTANT**: It requires an internal headless browser solver called **Byparr** ([GitHub - ThePhaseless/Byparr](https://github.com/ThePhaseless/Byparr)) to navigate Cloudflare challenges. Byparr must be running alongside Deepbridge.
-- Search queries hit Deepbrid's private Vue/AJAX API endpoints directly to gather Usenet results.
-- Top results are automatically filtered, processed, and resolved to playable Deepbrid streams.
-- Stream cards are labeled `Deepbrid Official ⚡ Ready` when using this source.
+Finder searches are now sent from Oracle only to that paired browser configuration and run inside the logged-in Deepbrid tab. Browser cookies, passwords, and Google credentials never leave the browser. Each generated dashboard configuration has its own random bridge identity and request queue, so results are not mixed between users.
 
+If Oracle is restarted or redeployed, reopen the configuration's pairing URL once to reconnect the extension. If the Deepbrid tab is closed, open it again before requesting Finder streams.
 ## External result modes
 
 Deepbridge supports two external Newznab/AltHub result modes from the dashboard:
@@ -318,11 +314,11 @@ Deepbrid API keys, Easynews credentials, external indexers, timeout overrides, a
 
 ### Per-user timeout overrides
 
-The dashboard includes a **⏱ Timeout Settings** section where users can override the default timeouts without needing server-level environment variables. This is useful when custom Newznab or NZBHydra indexers are slow and cause `TimeoutError: The operation was aborted due to timeout` errors.
+The dashboard includes a **â± Timeout Settings** section where users can override the default timeouts without needing server-level environment variables. This is useful when custom Newznab or NZBHydra indexers are slow and cause `TimeoutError: The operation was aborted due to timeout` errors.
 
-- **Official Streams (ms)** — Timeout for fetching official Deepbrid streams. Default: 4500ms.
-- **Resolve Links (ms)** — Timeout for resolving NZB links through Deepbrid. Default: 4500ms.
-- **Indexer Search (ms)** — Timeout for Newznab/NZBHydra indexer searches. Default: 12000ms.
+- **Official Streams (ms)** â€” Timeout for fetching official Deepbrid streams. Default: 4500ms.
+- **Resolve Links (ms)** â€” Timeout for resolving NZB links through Deepbrid. Default: 4500ms.
+- **Indexer Search (ms)** â€” Timeout for Newznab/NZBHydra indexer searches. Default: 12000ms.
 
 Set to `0` to use server defaults. Per-user values take priority over environment variables.
 
@@ -332,22 +328,22 @@ See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 ```text
 Stremio
-  │
-  ▼
+  â”‚
+  â–¼
 Deepbridge addon
-  ├─ Deepbrid official addon sources
-  ├─ Built-in Easynews direct source
-  ├─ External Newznab-compatible indexers resolved through Deepbrid
-  ├─ Release parsing/ranking/deduplication
-  ├─ External pregrab via Deepbrid
-  └─ Direct final Deepbrid/myfast or Easynews CDN playback URLs
+  â”œâ”€ Deepbrid official addon sources
+  â”œâ”€ Built-in Easynews direct source
+  â”œâ”€ External Newznab-compatible indexers resolved through Deepbrid
+  â”œâ”€ Release parsing/ranking/deduplication
+  â”œâ”€ External pregrab via Deepbrid
+  â””â”€ Direct final Deepbrid/myfast or Easynews CDN playback URLs
 ```
 
 Deepbridge is intentionally not a video proxy. It prepares stream results and returns direct playback URLs so media bandwidth comes from Deepbrid or Easynews servers, not your addon host.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## 🎁 Support The Project: Deepbrid Referral Guide
+## ðŸŽ Support The Project: Deepbrid Referral Guide
 
 <p align="center">
   <a href="https://www.deepbrid.com/aff/go/pickymarker4906?i=4" target="_blank" rel="noopener noreferrer">
@@ -360,10 +356,10 @@ This vendor package is **100% free and open-source**. However, maintaining and u
 The **ONLY** way to support this project and ensure its continued development is by using our **Deepbrid Referral Link** when you sign up or renew your account.
 
 <p align="center">
-  <strong><a href="https://www.deepbrid.com/aff/go/pickymarker4906">👉 CLICK HERE TO SIGN UP FOR DEEPBRID 👈</a></strong>
+  <strong><a href="https://www.deepbrid.com/aff/go/pickymarker4906">ðŸ‘‰ CLICK HERE TO SIGN UP FOR DEEPBRID ðŸ‘ˆ</a></strong>
 </p>
 
-### 🛑 How to Properly Use the Referral Link (IMPORTANT)
+### ðŸ›‘ How to Properly Use the Referral Link (IMPORTANT)
 
 To ensure the referral tracks correctly and supports the project, please follow these exact steps:
 

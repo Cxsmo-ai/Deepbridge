@@ -9,12 +9,7 @@ Deepbridge supports environment-level configuration and per-user web configurati
 | `PORT` | `7000` | HTTP port inside Node.js/container. |
 | `BASE_URL` | request-derived/local | Public addon base URL. Recommended in production. |
 | `DEEPBRID_API_KEY` | empty | Optional fallback Deepbrid API key. |
-| `DEEPBRID_WEB_COOKIE` | empty | Optional logged-in Deepbrid website session cookie for the premium `/usenet-finder` source. API key alone is not enough for this website search flow. |
-| `DEEPBRID_WEB_USER_AGENT` | Chrome-like default | Optional browser User-Agent to use with `DEEPBRID_WEB_COOKIE`. Cloudflare clearance cookies may be bound to the browser User-Agent that created them. |
-| `DEEPBRID_WEB_HEADERS_JSON` | empty | Optional JSON object of safe browser headers copied from an authenticated `/usenet-finder` request. Used only by the Deepbrid Usenet Finder flow. |
-| `DEEPBRID_BYPARR_URL` | empty | Optional Byparr `/v1` endpoint used to solve Cloudflare from the server network, then retry Finder with the logged-in Deepbrid cookie plus Byparr clearance. On the Oracle `proxynet` stack this is usually `http://byparr:8191/v1`. |
-| `DEEPBRID_BYPARR_TIMEOUT` | `70000` | Maximum milliseconds for the Usenet Finder-only Byparr Cloudflare solve. |
-| `DEEPBRID_USENET_FINDER_ENABLED` | `true` | Enables the Deepbrid website Usenet Finder source when a web cookie is configured. |
+| `DEEPBRID_USENET_FINDER_ENABLED` | `true` | Enables the paired browser-extension Deepbrid Finder source. |
 | `DEEPBRID_USENET_FINDER_MAX_RESULTS` | `4` | Maximum ready Finder streams returned per stream request. |
 | `DEEPBRID_USENET_FINDER_MAX_PROCESS` | `5` | Maximum Finder rows to process into file links per stream request. |
 | `NEWSHOSTING_USERNAME` | empty | Optional global fallback Newshosting username. Per-link dashboard config can be used instead. |
@@ -43,13 +38,9 @@ Indexer URLs can be entered either as the service root or the Newznab API endpoi
 
 ## Deepbrid Usenet Finder
 
-Deepbridge can optionally use Deepbrid's own premium website Usenet Finder as a first-party Deepbrid source. This is separate from the API-key-only official Stremio source and separate from external Newznab indexers.
+Deepbridge can optionally use Deepbrid's premium website Usenet Finder through a paired browser extension. This is separate from the API-key-only official Stremio source and external Newznab indexers.
 
-The Finder website flow currently requires a logged-in Deepbrid website session cookie. A Deepbrid API key is still required for the addon overall, but API key alone does not authenticate `/usenet-finder` search. For hosted installs, prefer setting `DEEPBRID_WEB_COOKIE` on the server instead of embedding the cookie in generated Stremio configuration tokens.
-
-If the server receives a Cloudflare challenge page from `/usenet-finder`, set `DEEPBRID_BYPARR_URL` to a reachable Byparr endpoint. Byparr is used only for the Deepbrid Usenet Finder flow to obtain Cloudflare clearance cookies from the same network as the addon; Deepbridge still sends the Deepbrid login session cookie on the final Finder requests. Other Deepbridge sources do not call Byparr.
-
-When Cloudflare or Deepbrid rejects a cookie that works in a browser, copy the request headers from Edge/Chrome for a successful `/usenet-finder` page load and provide them as `DEEPBRID_WEB_HEADERS_JSON`. Deepbridge only replays an allowlist of browser identity headers, not arbitrary headers.
+Load the MV2 extension release in an MV2-capable browser, keep a logged-in Deepbrid Finder tab open, then open the per-configuration pairing URL produced by the dashboard. Oracle sends Finder requests only to that paired extension. No website cookie, copied browser headers, Google credential, or Byparr endpoint is configured in Deepbridge.
 
 When enabled, Deepbridge searches `/usenet-finder`, scores matching rows, processes a small number of best candidates through Deepbrid's Finder AJAX flow, and returns only direct video file URLs.
 
