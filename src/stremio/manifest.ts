@@ -4,10 +4,29 @@ export const manifest = {
   name: "Deepbridge",
   description:
     "Deepbrid official results plus extra Usenet indexer NZBs resolved through Deepbrid.",
-  resources: ["stream"],
+  resources: ["catalog", "meta", "stream"],
   types: ["movie", "series"],
   idPrefixes: ["tt", "kitsu", "anilist", "mal"],
-  catalogs: [],
+  catalogs: [
+    {
+      type: "movie",
+      id: "deepbridge-library-movies",
+      name: "My Library Movies",
+      extra: [{ name: "skip" }, { name: "search" }]
+    },
+    {
+      type: "series",
+      id: "deepbridge-library-tv",
+      name: "My Library TV Shows",
+      extra: [{ name: "skip" }, { name: "search" }]
+    },
+    {
+      type: "series",
+      id: "deepbridge-library-anime",
+      name: "My Library Anime",
+      extra: [{ name: "skip" }, { name: "search" }]
+    }
+  ],
   behaviorHints: {
     configurable: true,
     configurationRequired: true

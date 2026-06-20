@@ -63,6 +63,10 @@ Generated manifest URLs are private because they can contain the encoded Newshos
 
 Deepbridge can show ready torrents already present in your Deepbrid torrent library. Torrent library links are volatile, so stream cards point back to Deepbridge. When playback starts, Deepbridge refreshes `GET /torrents/info?id={id}` and redirects to the newest link instead of storing old `links[]` values.
 
+When **My Library Catalogs** is enabled, Deepbridge also exposes three Stremio catalogs: **My Library Movies**, **My Library TV Shows**, and **My Library Anime**. Each ready torrent is a separate catalog item with enriched Cinemeta metadata. Selecting an item refreshes its exact Deepbrid torrent ID and returns only the current direct playback URL. The catalog index caches torrent IDs and metadata for five minutes; it never persists a volatile direct playback URL.
+
+`DEEPBRID_LIBRARY_CATALOG_TIMEOUT` controls the Deepbrid library-list request timeout in milliseconds. Per-install links can override it with `deepbridLibraryCatalogTimeout`.
+
 External magnet links can be added in the dashboard, one per line. They are not searched like a tracker; they are static magnets that Deepbridge adds to Deepbrid only when opened.
 
 Upstream Stremio addon URLs can also be added, one per line. Deepbridge calls their standard `/stream/{type}/{id}.json` endpoint. Cached/direct service streams are shown with the upstream addon name, while P2P/torrent streams, `magnet:` streams, and `infoHash` streams are skipped when `directLinksOnly` is enabled. Disable direct-links-only only if you intentionally want Deepbridge to expose on-demand `/torrent/add` routes.

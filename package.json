@@ -24,7 +24,7 @@
                     "dev":  "nodemon --watch src -e ts --exec ts-node src/server.ts",
                     "build":  "tsc",
                     "check":  "npm run build",
-                    "test":  "npm run build && node scripts/test-newshosting-protocol.mjs && node scripts/test-deepbrid-usenet-finder.mjs",
+                    "test":  "npm run build && node scripts/test-newshosting-protocol.mjs && node scripts/test-deepbrid-usenet-finder.mjs && node scripts/test-deepbrid-library-catalog.mjs",
                     "docker:build":  "docker build -t deepbridge:local ."
                 },
     "keywords":  [

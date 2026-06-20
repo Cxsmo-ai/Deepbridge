@@ -456,6 +456,14 @@
         </select>
         <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 5px;">Ready torrents already in your Deepbrid library are matched by filename and refreshed right before playback.</p>
       </div>
+      <div class="form-group" style="margin-bottom: 15px;">
+        <label>My Library Catalogs</label>
+        <select id="deepbridLibraryCatalogsEnabled">
+          <option value="true" selected>Enabled: Movies, TV Shows, and Anime</option>
+          <option value="false">Disabled</option>
+        </select>
+        <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 5px;">Each ready Deepbrid torrent appears as a specific library entry. Playback refreshes that torrent's current direct link.</p>
+      </div>
       <div class="form-group" style="margin-bottom: 0;">
         <label>External Magnet Links</label>
         <textarea id="externalTorrentMagnets" rows="4" placeholder="One magnet link per line" style="width: 100%; padding: 8px; font-size: 0.9rem; resize: vertical;"></textarea>
@@ -792,6 +800,7 @@
       easynewsPassword: document.getElementById('easynewsPassword').value,
       easynewsMaxResults: Math.min(Math.max(parseInt(document.getElementById('easynewsMaxResults').value, 10) || 4, 1), 8),
       deepbridLibraryEnabled: document.getElementById('deepbridLibraryEnabled').value === 'true',
+      deepbridLibraryCatalogsEnabled: document.getElementById('deepbridLibraryCatalogsEnabled').value === 'true',
       externalTorrentMagnets: document.getElementById('externalTorrentMagnets').value.trim(),
       stremioAddons: document.getElementById('stremioAddonUrls').value.split(/\r?\n/).map(url => url.trim()).filter(Boolean).map(url => ({ url })),
       newshostingEnabled: document.getElementById('newshostingEnabled').value === 'true',

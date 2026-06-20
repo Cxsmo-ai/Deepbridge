@@ -3,19 +3,14 @@ import { __deepbridUsenetFinderTest } from "../dist/deepbrid/usenetFinder.js";
 
 const { parseFinderResults, deepFindFiles, selectBestVideo, mergeCookieStrings, hasCloudflareChallenge, parseBrowserHeaders } = __deepbridUsenetFinderTest;
 
-const html = `
-<table><tbody>
-  <tr data-token="abc123">
-    <td>
-      <div class="result-title-info">
-        <div class="title">Example.Show.S01E02.1080p.WEB-DL.H264-GRP<button>Save</button></div>
-      </div>
-    </td>
-    <td><span class="result-category">TV &gt; HD</span></td>
-    <td><span class="result-size">1.50 GB</span></td>
-    <td><button class="btn-view">View</button></td>
-  </tr>
-</tbody></table>`;
+const html = JSON.stringify({
+  results: [{
+    token: "abc123",
+    title: "Example.Show.S01E02.1080p.WEB-DL.H264-GRP",
+    cat: "TV > HD",
+    sizeBytes: 1610612736
+  }]
+});
 
 const media = { type: "series", imdbId: "tt1234567", season: 1, episode: 2 };
 const metadata = { title: "Example Show", aliases: ["Example Show"], year: 2026 };

@@ -40,6 +40,8 @@ export interface UserConfig {
   newshostingNzbTimeout?: number;
   newshostingPrecheck?: boolean;
   deepbridLibraryEnabled?: boolean;
+  deepbridLibraryCatalogsEnabled?: boolean;
+  deepbridLibraryCatalogTimeout?: number;
   torrentLibraryTimeout?: number;
   torrentInfoTimeout?: number;
   torrentAddTimeout?: number;

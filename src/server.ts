@@ -16,6 +16,7 @@ import { getIndexerSources, getLastIndexerSearchStats } from "./indexer/search";
 import { getEasynewsDirectSources, getLastEasynewsDirectStats } from "./easynews/direct";
 import { getLastNewshostingStats, getNewshostingSources } from "./newshosting/direct";
 import { getLastTorrentStats, getTorrentSources, normalizeTorrent } from "./deepbrid/torrents";
+import { getLibraryCatalog, getLibraryDirectStream, getLibraryMeta, isLibraryItemId, LibraryCatalogId } from "./deepbrid/libraryCatalog";
 import { getLastUpstreamAddonStats, getUpstreamAddonSources } from "./stremio/upstreamAddons";
 import { decodeConfig } from "./core/configDecoder";
 import { dedupeCandidates } from "./core/releaseMatch";
@@ -131,6 +132,42 @@ function cacheHealth() {
     torrents: getLastTorrentStats(),
     upstreamAddons: getLastUpstreamAddonStats()
   };
+}
+
+function getDeepbridRequestContext(token?: string): { apiKey: string; userConfig: any } {
+  const userConfig = token ? decodeConfig(token) : null;
+  return {
+    userConfig,
+    apiKey: userConfig?.deepbridApiKey || process.env.DEEPBRID_API_KEY || ""
+  };
+}
+
+function libraryCatalogTimeout(userConfig: any): number {
+  return Number(userConfig?.deepbridLibraryCatalogTimeout || process.env.DEEPBRID_LIBRARY_CATALOG_TIMEOUT || 12000) || 12000;
+}
+
+async function handleLibraryCatalog(token: string | undefined, catalogId: string, query: any) {
+  const validCatalogIds: LibraryCatalogId[] = ["deepbridge-library-movies", "deepbridge-library-tv", "deepbridge-library-anime"];
+  if (!validCatalogIds.includes(catalogId as LibraryCatalogId)) return { metas: [] };
+  const { apiKey, userConfig } = getDeepbridRequestContext(token);
+  if (!apiKey || userConfig?.deepbridLibraryCatalogsEnabled === false) return { metas: [] };
+  return getLibraryCatalog(new DeepbridClient(apiKey), apiKey, catalogId as LibraryCatalogId, {
+    skip: Math.max(0, Number(query?.skip || 0) || 0),
+    search: typeof query?.search === "string" ? query.search : "",
+    timeoutMs: libraryCatalogTimeout(userConfig)
+  });
+}
+
+async function handleLibraryMeta(token: string | undefined, id: string) {
+  const { apiKey, userConfig } = getDeepbridRequestContext(token);
+  if (!apiKey || userConfig?.deepbridLibraryCatalogsEnabled === false) return undefined;
+  return getLibraryMeta(new DeepbridClient(apiKey), apiKey, id, libraryCatalogTimeout(userConfig));
+}
+
+async function handleLibraryStream(token: string | undefined, id: string) {
+  const { apiKey, userConfig } = getDeepbridRequestContext(token);
+  if (!apiKey || userConfig?.deepbridLibraryCatalogsEnabled === false) return { streams: [] };
+  return getLibraryDirectStream(new DeepbridClient(apiKey), id, Number(userConfig?.torrentInfoTimeout || 12000) || 12000);
 }
 
 function newshostingNzbErrorCategory(error: unknown): string {
@@ -777,6 +814,28 @@ app.get("/:token/manifest.json", async (request, reply) => {
   return baseManifest;
 });
 
+app.get("/catalog/:type/:id.json", async (request) => {
+  const { id } = request.params as { type: string; id: string };
+  return handleLibraryCatalog(undefined, id, request.query);
+});
+
+app.get("/:token/catalog/:type/:id.json", async (request) => {
+  const { token, id } = request.params as { token: string; type: string; id: string };
+  return handleLibraryCatalog(token, id, request.query);
+});
+
+app.get("/meta/:type/:id.json", async (request, reply) => {
+  const { id } = request.params as { type: string; id: string };
+  const result = await handleLibraryMeta(undefined, id);
+  return result || reply.status(404).send({ meta: null });
+});
+
+app.get("/:token/meta/:type/:id.json", async (request, reply) => {
+  const { token, id } = request.params as { token: string; type: string; id: string };
+  const result = await handleLibraryMeta(token, id);
+  return result || reply.status(404).send({ meta: null });
+});
+
 async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, token?: string) {
   try {
     let apiKey = "";
@@ -882,6 +941,7 @@ function parseSeriesRouteId(id: string): { imdbId: string; season: number; episo
 
 app.get("/stream/movie/:imdbId.json", async (request, reply) => {
   const { imdbId } = request.params as { imdbId: string };
+  if (isLibraryItemId(imdbId)) return handleLibraryStream(undefined, imdbId);
   app.log.info({ event: "stream_request", mediaType: "movie", imdbId });
   const dynamicBaseUrl = getRequestBaseUrl(request);
   return await handleStreamRequest({ type: "movie", imdbId }, dynamicBaseUrl);
@@ -889,6 +949,7 @@ app.get("/stream/movie/:imdbId.json", async (request, reply) => {
 
 app.get("/stream/series/:id.json", async (request, reply) => {
   const { id } = request.params as { id: string };
+  if (isLibraryItemId(id)) return handleLibraryStream(undefined, id);
   app.log.info({ event: "stream_request", mediaType: "series", id });
   
   const dynamicBaseUrl = getRequestBaseUrl(request);
@@ -903,6 +964,7 @@ app.get("/stream/series/:id.json", async (request, reply) => {
 
 app.get("/:token/stream/movie/:imdbId.json", async (request, reply) => {
   const { token, imdbId } = request.params as { token: string, imdbId: string };
+  if (isLibraryItemId(imdbId)) return handleLibraryStream(token, imdbId);
   app.log.info({ event: "stream_request", mediaType: "movie", imdbId });
   const dynamicBaseUrl = getRequestBaseUrl(request);
   return await handleStreamRequest({ type: "movie", imdbId }, dynamicBaseUrl, token);
@@ -910,6 +972,7 @@ app.get("/:token/stream/movie/:imdbId.json", async (request, reply) => {
 
 app.get("/:token/stream/series/:id.json", async (request, reply) => {
   const { token, id } = request.params as { token: string, id: string };
+  if (isLibraryItemId(id)) return handleLibraryStream(token, id);
   app.log.info({ event: "stream_request", mediaType: "series", id });
   
   const dynamicBaseUrl = getRequestBaseUrl(request);
