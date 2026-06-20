@@ -10,10 +10,11 @@
   <a href="https://hub.docker.com/r/pickymarker/deepbridge"><img alt="Docker pulls" src="https://img.shields.io/docker/pulls/pickymarker/deepbridge?style=for-the-badge&logo=docker"></a>
   <a href="https://hub.docker.com/r/pickymarker/deepbridge"><img alt="Docker image size" src="https://img.shields.io/docker/image-size/pickymarker/deepbridge/latest?style=for-the-badge&logo=docker"></a>
   <a href="https://hub.docker.com/r/pickymarker/deepbridge"><img alt="Docker stars" src="https://img.shields.io/docker/stars/pickymarker/deepbridge?style=for-the-badge&logo=docker"></a>
-  <a href="https://github.com/Cxsmo-ai/Deepbridge/releases"><img alt="Release downloads" src="https://img.shields.io/github/downloads/Cxsmo-ai/Deepbridge/total?style=for-the-badge&label=Release%20downloads"></a>
+  <a href="https://github.com/Cxsmo-ai/Deepbridge/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Cxsmo-ai/Deepbridge?style=for-the-badge&label=Latest%20release"></a>
+  <a href="https://github.com/Cxsmo-ai/Deepbridge/releases/latest"><img alt="Release date" src="https://img.shields.io/github/release-date/Cxsmo-ai/Deepbridge?style=for-the-badge&label=Release%20date"></a>
   <a href="https://github.com/Cxsmo-ai/Deepbridge/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/Cxsmo-ai/Deepbridge?style=for-the-badge"></a>
   <a href="https://github.com/Cxsmo-ai/Deepbridge/network/members"><img alt="Forks" src="https://img.shields.io/github/forks/Cxsmo-ai/Deepbridge?style=for-the-badge"></a>
-  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/Cxsmo-ai/Deepbridge?style=for-the-badge"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue?style=for-the-badge"></a>
 </p>
 <p align="center">
   <a href="#quick-start">Quick start</a> Â·
@@ -244,9 +245,9 @@ https://your-domain.example/<configuration-token>/manifest.json
 
 ## Live metrics and downloads
 
-The README includes live badges for CI, Docker Hub publishing, Docker Hub pulls, Docker Hub image size, Docker Hub stars, release downloads, stars, forks, and license status.
+The README includes live badges for CI, Docker Hub publishing, Docker Hub pulls, Docker Hub image size, Docker Hub stars, latest release, release date, stars, forks, and license status.
 
-- Release download counts are tracked live by GitHub/Shields once release assets are published.
+- The release badges link directly to the latest extension release; download counts are intentionally not shown because GitHub starts them at zero until an asset is downloaded.
 - Docker Hub exposes public live pull/star/image-size badges for `pickymarker/deepbridge`.
 - Docker Hub is the primary published image so public pull stats reflect normal install usage.
 
