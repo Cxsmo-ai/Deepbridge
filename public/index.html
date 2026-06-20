@@ -731,8 +731,8 @@
 
   function generate() {
     const deepbridKey = document.getElementById('deepbridKey').value.trim();
-    if (!deepbridKey) {
-      alert("Please provide a Deepbrid API Key.");
+    if (!deepbridKey || /^(admin|your[_ -]?deepbrid[_ -]?api[_ -]?key|example)$/i.test(deepbridKey)) {
+      alert("Please provide your actual Deepbrid API Key. Placeholder values cannot access your My Library torrents.");
       return;
     }
 
