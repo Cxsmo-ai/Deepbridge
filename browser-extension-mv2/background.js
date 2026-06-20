@@ -27,7 +27,10 @@ async function poll() {
     if (body.request) {
       let result;
       try { result = await fetchFromDeepbrid(body.request); }
-      catch (error) { result = { statusCode: 599, text: JSON.stringify({ error: String(error.message || error) }) }; }
+      catch (error) {
+        console.error("Deepbridge Finder bridge request failed", error);
+        result = { statusCode: 599, text: JSON.stringify({ error: String(error.message || error) }) };
+      }
       await api("respond", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(Object.assign({ id: body.request.id }, result)) });
     }
   } catch (_) {

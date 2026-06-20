@@ -9,6 +9,7 @@ window.addEventListener("message", async event => {
     });
     result = { statusCode: response.status, text: await response.text() };
   } catch (error) {
+    console.error("Deepbridge Finder page request failed", error);
     result = { statusCode: 599, text: JSON.stringify({ error: String(error.message || error) }) };
   }
   window.postMessage({ channel: "deepbridge-finder-page", id: data.id, result }, location.origin);
