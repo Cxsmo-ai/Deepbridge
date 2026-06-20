@@ -44,9 +44,15 @@ async function poll() {
 
 chrome.runtime.onMessage.addListener((message) => {
   if (message?.type !== "pair") return;
-  bridgeRoot = message.pairingUrl.replace(/\/finder-auth$/, "");
-  chrome.storage.local.set({ bridgeRoot });
-  api("pair", { method: "POST" }).then(poll);
+  const candidate = message.pairingUrl.replace(/\/finder-auth$/, "");
+  fetch(`${candidate}/finder-bridge/pair`, { method: "POST", credentials: "omit" })
+    .then(async response => {
+      if (!response.ok) throw new Error(`Pairing failed: ${response.status}`);
+      bridgeRoot = candidate;
+      await chrome.storage.local.set({ bridgeRoot });
+      poll();
+    })
+    .catch(() => chrome.storage.local.remove("bridgeRoot"));
 });
 
 chrome.storage.local.get("bridgeRoot").then(({ bridgeRoot: saved }) => { bridgeRoot = saved || ""; poll(); });
