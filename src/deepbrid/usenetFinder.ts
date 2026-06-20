@@ -208,7 +208,7 @@ function queryTitles(metadata: MediaMetadata, media: MediaRequest): string[] {
       }
     }
   }
-  return out.slice(0, 3);
+  return out;
 }
 
 function buildQueries(metadata: MediaMetadata, media: MediaRequest): string[] {
@@ -216,9 +216,9 @@ function buildQueries(metadata: MediaMetadata, media: MediaRequest): string[] {
   if (titles.length === 0) return [];
   if (media.type === "series" && media.season && media.episode) {
     const code = `S${String(media.season).padStart(2, "0")}E${String(media.episode).padStart(2, "0")}`;
-    return [...new Set(titles.flatMap(title => [`${title} ${code}`, title]))].slice(0, 4);
+    return [...new Set(titles.flatMap(title => [`${title} ${code}`, title]))];
   }
-  return [...new Set(titles.flatMap(title => metadata.year ? [`${title} ${metadata.year}`, title] : [title]))].slice(0, 4);
+  return [...new Set(titles.flatMap(title => metadata.year ? [`${title} ${metadata.year}`, title] : [title]))];
 }
 
 function decodeHtml(value: string): string {
