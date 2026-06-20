@@ -203,16 +203,17 @@ async function getLibraryIndex(client: DeepbridClient, apiKey: string, timeoutMs
 }
 
 function catalogMeta(item: LibraryItem): Record<string, unknown> {
+  const { id: _metadataId, imdb_id: _imdbId, ...privateMetadata } = item.metadata;
   return {
-    ...item.metadata,
+    ...privateMetadata,
     // Keep the catalog's private ID so Wako does not fan the title out to
     // every installed scraper. The stream route refreshes this exact torrent.
     id: item.id,
     type: item.type,
     name: item.releaseTitle,
-    releaseInfo: item.metadata.releaseInfo,
+    releaseInfo: privateMetadata.releaseInfo,
     behaviorHints: {
-      ...(item.metadata.behaviorHints || {}),
+      ...(privateMetadata.behaviorHints || {}),
       defaultVideoId: item.type === "movie" ? item.id : `${item.id}:${item.season || 1}:${item.episode || 1}`
     }
   };
