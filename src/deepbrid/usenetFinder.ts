@@ -5,6 +5,7 @@ import { makeMediaKey } from "../core/mediaKey";
 import { parseRelease } from "../core/parseRelease";
 import { MediaMetadata, normalizeComparableTitle, scoreReleaseMatch } from "../core/releaseMatch";
 import { SourceCandidate } from "../core/types";
+import { isBrowserBridgeConfigured, requestBrowserBridge } from "./browserBridge";
 
 type FinderStats = {
   startedAt: string;
@@ -157,7 +158,7 @@ function byparrTimeoutMs(userConfig?: any): number {
 function isEnabled(userConfig?: any): boolean {
   if (userConfig?.deepbridUsenetFinderEnabled === false) return false;
   if (process.env.DEEPBRID_USENET_FINDER_ENABLED === "false") return false;
-  return Boolean(finderCookie(userConfig));
+  return Boolean(finderCookie(userConfig) || isBrowserBridgeConfigured(userConfig || {}));
 }
 
 function errorCategory(error: unknown): string {
@@ -391,6 +392,9 @@ function makeFinderHeaders(context: FinderHttpContext, accept: string, ajax: boo
 }
 
 async function requestFinderText(url: URL, context: FinderHttpContext, timeoutMs: number, accept: string, ajax = false): Promise<{ statusCode: number; text: string }> {
+  if (isBrowserBridgeConfigured(context.userConfig || {})) {
+    return requestBrowserBridge(context.userConfig, url.toString(), accept, ajax, timeoutMs + 5000);
+  }
   // A user-supplied browser session should be attempted as-is. Byparr is a
   // Finder-only challenge fallback, not a mandatory proxy for authenticated requests.
   if (!context.explicitBrowserIdentity) {

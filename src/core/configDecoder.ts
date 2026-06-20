@@ -28,6 +28,9 @@ export interface UserConfig {
   deepbridUsenetFinderMaxProcess?: number;
   deepbridUsenetFinderSearchTimeout?: number;
   deepbridUsenetFinderProcessTimeout?: number;
+  deepbridFinderBridgeEnabled?: boolean;
+  deepbridFinderBridgeId?: string;
+  deepbridFinderBridgeSecret?: string;
   newshostingEnabled?: boolean;
   newshostingUsername?: string;
   newshostingPassword?: string;

@@ -22,6 +22,7 @@ import { decodeConfig } from "./core/configDecoder";
 import { dedupeCandidates } from "./core/releaseMatch";
 import { parseRelease } from "./core/parseRelease";
 import { SourceCandidate } from "./core/types";
+import { browserBridgeStatus, pairBrowserBridge, pollBrowserBridge, respondBrowserBridge } from "./deepbrid/browserBridge";
 
 dotenv.config();
 
@@ -60,6 +61,15 @@ app.register(fastifyStatic, {
 });
 
 const baseUrl = process.env.BASE_URL || "http://localhost:7000";
+
+function bridgeConfigOrReply(token: string, reply: any) {
+  const config = decodeConfig(token);
+  if (!config?.deepbridFinderBridgeEnabled || !config.deepbridFinderBridgeId || !config.deepbridFinderBridgeSecret) {
+    reply.status(400).send({ error: "browser_bridge_not_configured" });
+    return undefined;
+  }
+  return config;
+}
 
 function getRequestBaseUrl(request: any): string {
   return process.env.BASE_URL || `${request.protocol}://${request.hostname}`;
@@ -782,6 +792,35 @@ async function pregrabExternalCandidates(client: DeepbridClient, candidates: Sou
   lastPregrabStats = stats;
   return readyCandidates;
 }
+
+app.get("/:token/finder-auth", async (request, reply) => {
+  const { token } = request.params as { token: string };
+  const config = bridgeConfigOrReply(token, reply);
+  if (!config) return;
+  reply.type("text/html").send(`<!doctype html><html><head><meta charset="utf-8"><title>Deepbridge Browser Pairing</title></head><body><main><h1>Deepbrid Browser Pairing</h1><p>Open this page with the Deepbridge Finder Bridge extension installed. The extension will pair this browser configuration automatically.</p><p id="status">Waiting for the extension.</p></main><script>setTimeout(() => { document.getElementById('status').textContent = 'If this remains unchanged, install or enable the extension and reload this page.'; }, 2500);</script></body></html>`);
+});
+
+app.post("/:token/finder-bridge/pair", async (request, reply) => {
+  const config = bridgeConfigOrReply((request.params as any).token, reply);
+  if (!config) return;
+  if (!pairBrowserBridge(config)) return reply.status(403).send({ error: "browser_bridge_pair_rejected" });
+  return { ...browserBridgeStatus(config) };
+});
+
+app.get("/:token/finder-bridge/poll", async (request, reply) => {
+  const config = bridgeConfigOrReply((request.params as any).token, reply);
+  if (!config) return;
+  const requestItem = pollBrowserBridge(config);
+  return { request: requestItem || null, ...browserBridgeStatus(config) };
+});
+
+app.post("/:token/finder-bridge/respond", async (request, reply) => {
+  const config = bridgeConfigOrReply((request.params as any).token, reply);
+  if (!config) return;
+  const body = request.body as any;
+  const accepted = respondBrowserBridge(config, String(body?.id || ""), Number(body?.statusCode), String(body?.text || ""));
+  return accepted ? { accepted: true } : reply.status(404).send({ error: "browser_bridge_request_not_found" });
+});
 
 // Public Stremio routes
 app.get("/manifest.json", async (request, reply) => {

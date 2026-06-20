@@ -383,6 +383,14 @@
         <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 5px;">This uses Deepbrid's premium website Usenet Finder, not the API-key-only endpoint. It needs a logged-in Deepbrid website session cookie or the server-level DEEPBRID_WEB_COOKIE env var.</p>
       </div>
       <div class="form-group" style="margin-bottom: 15px;">
+        <label>Browser Extension Finder Bridge</label>
+        <select id="deepbridFinderBridgeEnabled">
+          <option value="true" selected>Enabled: search in paired Deepbrid browser</option>
+          <option value="false">Disabled: use server Finder fallback</option>
+        </select>
+        <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 5px;">Pair the extension after generating this configuration. It uses the logged-in Deepbrid tab and never uploads browser cookies.</p>
+      </div>
+      <div class="form-group" style="margin-bottom: 15px;">
         <label>Deepbrid Website Session Cookie</label>
         <input type="password" id="deepbridWebCookie" placeholder="e.g. PHPSESSID=...; amember_nr=...">
         <details style="margin-top: 8px; background: rgba(0,0,0,0.15); border-radius: 6px; padding: 10px 14px; border: 1px solid var(--panel-border);">
@@ -589,6 +597,11 @@
       <button class="btn-install" onclick="copyInstall()">
         Copy to Clipboard
       </button>
+      <div id="browserBridgeResult" style="display: none; margin-top: 14px;">
+        <label>Deepbrid Browser Extension Pairing URL</label>
+        <div class="link-box" id="browserBridgeUrl"></div>
+        <button class="btn-install" onclick="copyBrowserBridgeUrl()">Copy Pairing URL</button>
+      </div>
     </div>
   </div>
 
@@ -786,11 +799,16 @@
     }
 
 
+    const browserBridgeEnabled = document.getElementById('deepbridFinderBridgeEnabled').value === 'true';
+    const bridgeRandom = () => Array.from(crypto.getRandomValues(new Uint8Array(24)), value => value.toString(16).padStart(2, '0')).join('');
     const configObj = {
       deepbridApiKey: deepbridKey,
       externalResultMode: document.getElementById('externalResultMode').value,
       directLinksOnly: document.getElementById('directLinksOnly').value === 'true',
       deepbridUsenetFinderEnabled: document.getElementById('deepbridUsenetFinderEnabled').value === 'true',
+      deepbridFinderBridgeEnabled: browserBridgeEnabled,
+      deepbridFinderBridgeId: browserBridgeEnabled ? crypto.randomUUID() : '',
+      deepbridFinderBridgeSecret: browserBridgeEnabled ? bridgeRandom() : '',
       deepbridWebCookie: document.getElementById('deepbridWebCookie').value.trim(),
       deepbridByparrUrl: document.getElementById('deepbridByparrUrl').value.trim(),
       deepbridUsenetFinderMaxResults: Math.min(Math.max(parseInt(document.getElementById('deepbridUsenetFinderMaxResults').value, 10) || 4, 1), 10),
@@ -839,6 +857,13 @@
     let url = baseUrl + '/' + configStr + '/manifest.json';
     
     document.getElementById('manifestUrl').innerText = url;
+    const bridgeResult = document.getElementById('browserBridgeResult');
+    if (browserBridgeEnabled) {
+      document.getElementById('browserBridgeUrl').innerText = baseUrl + '/' + configStr + '/finder-auth';
+      bridgeResult.style.display = 'block';
+    } else {
+      bridgeResult.style.display = 'none';
+    }
     document.getElementById('result').style.display = 'block';
   }
 
@@ -847,6 +872,10 @@
     navigator.clipboard.writeText(url).then(() => {
       alert("Copied to clipboard!\n\n1. Open Stremio.\n2. Paste this link into the Search Bar.\n3. Click Install.");
     });
+  }
+
+  function copyBrowserBridgeUrl() {
+    navigator.clipboard.writeText(document.getElementById('browserBridgeUrl').innerText);
   }
 
   window.onload = () => {};

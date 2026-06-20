@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Deepbridge Finder Bridge",
+  "version": "0.1.0",
+  "description": "Relays Deepbrid Finder requests through an authenticated browser tab.",
+  "permissions": ["scripting", "tabs", "storage"],
+  "host_permissions": ["https://www.deepbrid.com/*", "https://57mwpz.deepascension.net/*"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [{ "matches": ["https://57mwpz.deepascension.net/*/finder-auth"], "js": ["pair.js"] }],
+  "action": { "default_title": "Deepbridge Finder Bridge" }
+}
