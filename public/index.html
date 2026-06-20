@@ -377,10 +377,10 @@
       <div class="form-group" style="margin-bottom: 15px;">
         <label>Enable Deepbrid Usenet Finder</label>
         <select id="deepbridUsenetFinderEnabled">
-          <option value="true" selected>Enabled when website session cookie is provided</option>
+          <option value="true" selected>Enabled when browser extension is paired</option>
           <option value="false">Disabled</option>
         </select>
-        <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 5px;">This uses Deepbrid's premium website Usenet Finder, not the API-key-only endpoint. It needs a logged-in Deepbrid website session cookie or the server-level DEEPBRID_WEB_COOKIE env var.</p>
+        <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 5px;">Finder requests run through the paired extension and its logged-in Deepbrid tab.</p>
       </div>
       <div class="form-group" style="margin-bottom: 15px;">
         <label>Browser Extension Finder Bridge</label>
@@ -388,35 +388,7 @@
           <option value="true" selected>Enabled: search in paired Deepbrid browser</option>
           <option value="false">Disabled: use server Finder fallback</option>
         </select>
-        <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 5px;">Pair the extension after generating this configuration. It uses the logged-in Deepbrid tab and never uploads browser cookies.</p>
-      </div>
-      <div class="form-group" style="margin-bottom: 15px;">
-        <label>Deepbrid Website Session Cookie</label>
-        <input type="password" id="deepbridWebCookie" placeholder="e.g. PHPSESSID=...; amember_nr=...">
-        <details style="margin-top: 8px; background: rgba(0,0,0,0.15); border-radius: 6px; padding: 10px 14px; border: 1px solid var(--panel-border);">
-          <summary style="color: var(--accent); cursor: pointer; font-size: 0.85rem; font-weight: 600; outline: none; user-select: none;">
-            ❓ How to get your Session Cookie
-          </summary>
-          <div style="margin-top: 12px; font-size: 0.8rem; color: var(--text-muted); line-height: 1.6;">
-            <p style="margin-bottom: 10px;">Because the Usenet Finder is not part of the official API, the addon needs to securely borrow your browser session.</p>
-            <ol style="padding-left: 20px; margin-bottom: 12px;">
-              <li style="margin-bottom: 4px;">Log into the <a href="https://www.deepbrid.com/usenet-finder" target="_blank" style="color: var(--primary-hover); text-decoration: none;">Deepbrid Usenet Finder</a> on your PC.</li>
-              <li style="margin-bottom: 4px;">Press <strong>F12</strong> to open Developer Tools, and navigate to the <strong>Network</strong> tab.</li>
-              <li style="margin-bottom: 4px;">Type a movie (like "Titanic") into the Deepbrid search box and press Enter.</li>
-              <li style="margin-bottom: 4px;">In the Network tab, a request starting with <code>usenet-finder?ajax=1</code> will appear. <strong>Right Click it &rarr; Copy &rarr; Copy as cURL</strong>.</li>
-              <li style="margin-bottom: 4px;">Paste the copied text into Notepad. Look for the section that starts with <code>-b</code> or <code>-H "cookie: ... "</code>.</li>
-              <li style="margin-bottom: 4px;">Copy <strong>ONLY</strong> the string inside the quotes (it will start with <code>PHPSESSID=...</code>) and paste it into the field above.</li>
-            </ol>
-            <div style="background: rgba(255, 118, 117, 0.1); border-left: 3px solid var(--danger); padding: 8px 12px; border-radius: 4px;">
-              <span style="color: var(--danger); font-weight: 600;">Note:</span> If you explicitly click "Log Out" on Deepbrid, this cookie will expire. Close the tab instead of logging out!
-            </div>
-          </div>
-        </details>
-      </div>
-      <div class="form-group" style="margin-bottom: 15px;">
-        <label>Deepbrid Byparr URL</label>
-        <input type="text" id="deepbridByparrUrl" placeholder="Optional. e.g. http://byparr:8191/v1">
-        <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 5px;">Leave blank to use the server default. Only needed if your Byparr container is hosted on a different port or external network.</p>
+        <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 5px;">Generate the install link, then open its pairing URL with the extension installed and a logged-in Deepbrid tab open. Cookies and passwords are never entered here.</p>
       </div>
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
         <div class="form-group" style="margin-bottom: 0;">
@@ -551,7 +523,7 @@
     </div>
 
     <div style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; margin-bottom: 30px;">
-      <label style="font-size: 0.95rem; color: var(--text); margin-bottom: 5px; display: block;">⏱ Timeout Settings</label>
+      <label style="font-size: 0.95rem; color: var(--text); margin-bottom: 5px; display: block;">â± Timeout Settings</label>
       <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 15px; line-height: 1.5;">Increase these if you see "TimeoutError: The operation was aborted due to timeout" errors, especially with slower indexers like NZBHydra or custom Newznab. Values are in milliseconds (1 second = 1000ms). Leave at 0 to use server defaults.</p>
       <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
         <div class="form-group" style="margin-bottom: 0;">
@@ -607,7 +579,7 @@
 
   <div class="panel" style="margin-top: 40px; text-align: left;" id="support-links">
     <h2 style="text-align: left; justify-content: flex-start; margin-bottom: 20px;">
-      <span style="margin-right: 10px;">🎁</span> Support The Project: Deepbrid Referral Guide
+      <span style="margin-right: 10px;">ðŸŽ</span> Support The Project: Deepbrid Referral Guide
     </h2>
     
     <p style="color: var(--text-muted); line-height: 1.6; margin-bottom: 15px;">
@@ -619,12 +591,12 @@
     </p>
 
     <div style="text-align: center; margin-bottom: 30px;">
-      <h3 style="margin-bottom: 15px; color: var(--primary-hover);">👉 <a href="https://www.deepbrid.com/aff/go/pickymarker4906" target="_blank" style="color: var(--primary-hover); text-decoration: none; border-bottom: 1px solid var(--primary-hover);">CLICK HERE TO SIGN UP FOR DEEPBRID</a> 👈</h3>
+      <h3 style="margin-bottom: 15px; color: var(--primary-hover);">ðŸ‘‰ <a href="https://www.deepbrid.com/aff/go/pickymarker4906" target="_blank" style="color: var(--primary-hover); text-decoration: none; border-bottom: 1px solid var(--primary-hover);">CLICK HERE TO SIGN UP FOR DEEPBRID</a> ðŸ‘ˆ</h3>
     </div>
 
     <hr style="border: 0; border-top: 1px solid var(--panel-border); margin: 30px 0;">
 
-    <h3 style="color: var(--text); margin-bottom: 20px; font-weight: 600;">🛑 How to Properly Use the Referral Link (IMPORTANT)</h3>
+    <h3 style="color: var(--text); margin-bottom: 20px; font-weight: 600;">ðŸ›‘ How to Properly Use the Referral Link (IMPORTANT)</h3>
 
     <p style="color: var(--text-muted); margin-bottom: 15px;">
       To ensure the referral tracks correctly and supports the project, please follow these exact steps:
@@ -809,8 +781,6 @@
       deepbridFinderBridgeEnabled: browserBridgeEnabled,
       deepbridFinderBridgeId: browserBridgeEnabled ? crypto.randomUUID() : '',
       deepbridFinderBridgeSecret: browserBridgeEnabled ? bridgeRandom() : '',
-      deepbridWebCookie: document.getElementById('deepbridWebCookie').value.trim(),
-      deepbridByparrUrl: document.getElementById('deepbridByparrUrl').value.trim(),
       deepbridUsenetFinderMaxResults: Math.min(Math.max(parseInt(document.getElementById('deepbridUsenetFinderMaxResults').value, 10) || 4, 1), 10),
       deepbridUsenetFinderMaxProcess: Math.min(Math.max(parseInt(document.getElementById('deepbridUsenetFinderMaxProcess').value, 10) || 5, 1), 12),
       easynewsEnabled: document.getElementById('easynewsEnabled').value === 'true',
