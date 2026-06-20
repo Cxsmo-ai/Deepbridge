@@ -1,8 +1,9 @@
 const bridgeChannel = "deepbridge-finder-page";
 const script = document.createElement("script");
 script.src = chrome.runtime.getURL("page-fetch.js");
+script.onload = () => script.remove();
+script.onerror = () => console.error("Deepbridge Finder page relay could not be injected.");
 (document.head || document.documentElement).appendChild(script);
-script.remove();
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!message || message.type !== "finder-request") return;
