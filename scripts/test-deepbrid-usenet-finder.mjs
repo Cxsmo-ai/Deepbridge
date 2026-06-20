@@ -38,6 +38,7 @@ assert.equal(
   "PHPSESSID=session1; amember_nr=member1; cf_clearance=clearance1"
 );
 assert.equal(hasCloudflareChallenge("<title>Just a moment...</title>", 403), true);
+assert.equal(hasCloudflareChallenge("generic forbidden response", 403), true);
 assert.equal(hasCloudflareChallenge("<table><tr data-token=\"x\"></tr></table>", 200), false);
 
 assert.deepEqual(

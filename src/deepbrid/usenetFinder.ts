@@ -293,7 +293,10 @@ function hasAuthFailure(html: string): boolean {
 }
 
 function hasCloudflareChallenge(html: string, statusCode: number): boolean {
-  if (statusCode !== 403 && statusCode !== 503) return false;
+  // Cloudflare can return a generic 403 body from a server-side client, without
+  // the usual challenge markers. Finder is the only code path allowed to use
+  // Byparr, so treat either challenge status as eligible for that fallback.
+  if (statusCode === 403 || statusCode === 503) return true;
   return /Just a moment|cf-browser-verification|challenge-platform|cf-chl|Cloudflare/i.test(html);
 }
 
