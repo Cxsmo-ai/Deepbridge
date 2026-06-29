@@ -501,6 +501,43 @@
     </div>
 
     <div style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; margin-bottom: 30px;">
+      <label style="font-size: 0.95rem; color: var(--text); margin-bottom: 10px; display: block;">Nexus / Miatrix Website Source</label>
+      <div class="form-group" style="margin-bottom: 15px;">
+        <label>Enable Nexus / Miatrix</label>
+        <select id="nexusMiatrixEnabled">
+          <option value="true" selected>Enabled when website cookie is provided</option>
+          <option value="false">Disabled</option>
+        </select>
+        <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 5px;">Searches nexus.miatrix.com like a logged-in browser, extracts website results, and submits selected NZBs to Deepbrid. This does not use the Nexus API.</p>
+      </div>
+      <div class="form-group" style="margin-bottom: 15px;">
+        <label>Nexus / Miatrix Website Cookie</label>
+        <input type="password" id="nexusMiatrixCookie" placeholder="Paste only the Cookie header value from nexus.miatrix.com">
+        <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 5px;">Optional. If left blank, Deepbridge can log in with the email/password below. NZBs are fetched server-side only when a result is being resolved.</p>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+        <div class="form-group" style="margin-bottom: 0;">
+          <label>Nexus Email / Username</label>
+          <input type="text" id="nexusMiatrixEmail" placeholder="Optional Nexus login email" style="padding: 8px; font-size: 0.9rem;">
+        </div>
+        <div class="form-group" style="margin-bottom: 0;">
+          <label>Nexus Password</label>
+          <input type="password" id="nexusMiatrixPassword" placeholder="Optional Nexus password" style="padding: 8px; font-size: 0.9rem;">
+        </div>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div class="form-group" style="margin-bottom: 0;">
+          <label>Max Nexus Results</label>
+          <input type="text" id="nexusMiatrixMaxResults" value="2" placeholder="1-10" style="padding: 8px; font-size: 0.9rem;">
+        </div>
+        <div class="form-group" style="margin-bottom: 0;">
+          <label>Nexus Search Timeout (ms)</label>
+          <input type="number" id="nexusMiatrixSearchTimeout" value="8000" min="1000" max="30000" step="500" style="padding: 8px; font-size: 0.9rem;">
+        </div>
+      </div>
+    </div>
+
+    <div style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; margin-bottom: 30px;">
       <label style="font-size: 0.95rem; color: var(--text); margin-bottom: 10px; display: block;">Official Deepbrid Resolution Limits</label>
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
         <div class="form-group" style="margin-bottom: 0;">
@@ -799,6 +836,12 @@
       newshostingPort: parseInt(document.getElementById('newshostingPort').value, 10) || 5598,
       newshostingMaxResults: Math.min(Math.max(parseInt(document.getElementById('newshostingMaxResults').value, 10) || 12, 1), 40),
       newshostingMaxNzbFiles: Math.min(Math.max(parseInt(document.getElementById('newshostingMaxNzbFiles').value, 10) || 32, 1), 500),
+      nexusMiatrixEnabled: document.getElementById('nexusMiatrixEnabled').value === 'true',
+      nexusMiatrixCookie: document.getElementById('nexusMiatrixCookie').value.trim(),
+      nexusMiatrixEmail: document.getElementById('nexusMiatrixEmail').value.trim(),
+      nexusMiatrixPassword: document.getElementById('nexusMiatrixPassword').value,
+      nexusMiatrixMaxResults: Math.min(Math.max(parseInt(document.getElementById('nexusMiatrixMaxResults').value, 10) || 2, 1), 10),
+      nexusMiatrixSearchTimeout: Math.min(Math.max(parseInt(document.getElementById('nexusMiatrixSearchTimeout').value, 10) || 8000, 1000), 30000),
       officialTimeout: parseInt(document.getElementById('officialTimeout').value, 10) || 0,
       resolveTimeout: parseInt(document.getElementById('resolveTimeout').value, 10) || 0,
       indexerTimeout: parseInt(document.getElementById('indexerTimeout').value, 10) || 0,

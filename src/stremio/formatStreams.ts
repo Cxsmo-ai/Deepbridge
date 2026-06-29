@@ -27,6 +27,7 @@ function sourceLabel(candidate: SourceCandidate): string {
   if (candidate.origin === "deepbrid-usenet-finder") return "Deepbrid Usenet";
   if (candidate.origin === "easynews-direct") return "Easynews Direct";
   if (candidate.origin === "newshosting-direct") return "Newshosting";
+  if (candidate.origin === "nexus-miatrix") return "Nexus/Miatrix";
   if (candidate.origin === "deepbrid-torrent-library") return "Deepbrid Library";
   if (candidate.origin === "external-torrent") return "External Torrent";
   if (candidate.origin === "stremio-addon-torrent") {

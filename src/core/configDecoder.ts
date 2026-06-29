@@ -42,6 +42,14 @@ export interface UserConfig {
   newshostingSearchTimeout?: number;
   newshostingNzbTimeout?: number;
   newshostingPrecheck?: boolean;
+  nexusMiatrixEnabled?: boolean;
+  nexusMiatrixCookie?: string;
+  nexusMiatrixEmail?: string;
+  nexusMiatrixPassword?: string;
+  nexusMiatrixUserAgent?: string;
+  nexusMiatrixMaxResults?: number;
+  nexusMiatrixSearchTimeout?: number;
+  nexusMiatrixNzbTimeout?: number;
   deepbridLibraryEnabled?: boolean;
   deepbridLibraryCatalogsEnabled?: boolean;
   deepbridLibraryCatalogTimeout?: number;

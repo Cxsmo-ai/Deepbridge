@@ -1,7 +1,7 @@
 # Deepbridge
 
 <p align="center">
-  <strong>A polished Stremio addon for Deepbrid-powered streaming with official sources, built-in Easynews/Newshosting support, and pre-resolved external Usenet indexer results.</strong>
+  <strong>A polished Stremio addon for Deepbrid-powered streaming with official sources, built-in Easynews/Newshosting/Nexus website support, and pre-resolved external Usenet indexer results.</strong>
 </p>
 
 <p align="center">
@@ -61,7 +61,7 @@ docker run --rm \
 
 ## What is Deepbridge?
 
-Deepbridge is a self-hosted Stremio addon that bridges Stremio, Deepbrid, built-in Easynews, built-in Newshosting, and optional Newznab-compatible Usenet indexers. It combines Deepbrid official streams, native Easynews/Newshosting results, and external indexer NZBs resolved through Deepbrid, then presents clean, ranked Stremio stream cards.
+Deepbridge is a self-hosted Stremio addon that bridges Stremio, Deepbrid, built-in Easynews, built-in Newshosting, Nexus/Miatrix website search, and optional Newznab-compatible Usenet indexers. It combines Deepbrid official streams, native Easynews/Newshosting/Nexus results, and external indexer NZBs resolved through Deepbrid, then presents clean, ranked Stremio stream cards.
 
 Deepbridge is built for people who want a simple addon URL, a clean configuration page, Docker-friendly deployment, and direct playback links from Deepbrid/myfast rather than proxying large video traffic through the addon server.
 
@@ -72,6 +72,8 @@ Deepbridge is built for people who want a simple addon URL, a clean configuratio
 - Easynews direct fallback returns final Easynews CDN links when native Easynews resolution succeeds.
 - Built-in Newshosting source configured directly in the dashboard.
 - Newshosting runs inside Deepbridge, generates NZBs on demand, and submits them to Deepbrid without a separate indexer API key.
+- Built-in Nexus/Miatrix website source configured directly in the dashboard.
+- Nexus/Miatrix is searched through the logged-in website flow, not the API, and selected NZBs are fetched only during Deepbrid resolution.
 - Deepbrid torrent library support with fresh link refresh at playback time.
 - My Library Movies, My Library TV Shows, and My Library Anime catalogs.
 - Each ready library torrent has its own catalog entry and exact direct playback refresh.
@@ -154,6 +156,35 @@ Newshosting behavior:
 - Oversized Newshosting posts are skipped when they exceed the configured max NZB file count.
 - Deepbrid receives an addon-hosted NZB URL; there is no separate Newznab API key.
 - Stream cards are labeled `Newshosting` when the result came from this built-in source.
+
+## Nexus / Miatrix website support
+
+Deepbridge can optionally search `nexus.miatrix.com` as a logged-in website session without using the Nexus API.
+
+Configure Nexus/Miatrix from the Deepbridge dashboard:
+
+```text
+Nexus / Miatrix Website Source
+  Enable Nexus / Miatrix
+  Nexus / Miatrix Website Cookie
+  Nexus Email / Username
+  Nexus Password
+  Max Nexus Results
+  Nexus Search Timeout
+```
+
+Nexus/Miatrix behavior:
+
+- Deepbridge searches the normal website browse page and extracts release/detail/NZB links from the HTML result table.
+- You can provide either a website cookie or normal Nexus login credentials.
+- Search requests do not download NZBs.
+- Deepbridge fetches a Nexus NZB only when that result is selected for Deepbrid resolution.
+- The fetched NZB is cached briefly on the addon server so Deepbrid can retrieve it without receiving your Nexus cookie.
+- Stream cards are labeled `Nexus/Miatrix` when the result came from this built-in source.
+
+Because Nexus download allowances can be limited, keep **Max Nexus Results** low. The dashboard default is `2`.
+
+If you route Nexus traffic through a VPN on your server, keep that routing limited to Nexus/Miatrix hostnames so the rest of Deepbridge continues using the normal server network path.
 
 ## Deepbrid Usenet Finder bridge
 

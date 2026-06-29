@@ -15,6 +15,7 @@ import { formatStreams } from "./stremio/formatStreams";
 import { getIndexerSources, getLastIndexerSearchStats } from "./indexer/search";
 import { getEasynewsDirectSources, getLastEasynewsDirectStats } from "./easynews/direct";
 import { getLastNewshostingStats, getNewshostingSources } from "./newshosting/direct";
+import { fetchNexusMiatrixNzb, getLastNexusMiatrixStats, getNexusMiatrixSources } from "./nexus/miatrix";
 import { getLastTorrentStats, getTorrentSources, normalizeTorrent } from "./deepbrid/torrents";
 import { getLibraryCatalog, getLibraryDirectStream, getLibraryMeta, isLibraryItemId, LibraryCatalogId, parseLibraryItemId } from "./deepbrid/libraryCatalog";
 import { getLastUpstreamAddonStats, getUpstreamAddonSources } from "./stremio/upstreamAddons";
@@ -87,6 +88,7 @@ type ResolvePayload = {
 const resolveCache = new Map<string, { url: string; expiresAt: number }>();
 const resolveInflight = new Map<string, Promise<string>>();
 const newshostingNzbCache = new Map<string, { nzb: string; expiresAt: number }>();
+const nexusNzbCache = new Map<string, { nzb: string; expiresAt: number }>();
 let lastNewshostingNzbStats = {
   attempted: 0,
   generated: 0,
@@ -123,6 +125,9 @@ function cacheHealth() {
   for (const [key, value] of newshostingNzbCache.entries()) {
     if (value.expiresAt <= now) newshostingNzbCache.delete(key);
   }
+  for (const [key, value] of nexusNzbCache.entries()) {
+    if (value.expiresAt <= now) nexusNzbCache.delete(key);
+  }
   return {
     resolve: {
       entries: resolveCache.size,
@@ -134,11 +139,16 @@ function cacheHealth() {
       ttlMs: 10 * 60 * 1000,
       generation: lastNewshostingNzbStats
     },
+    nexusNzb: {
+      entries: nexusNzbCache.size,
+      ttlMs: 10 * 60 * 1000
+    },
     deepbridAdd: lastPregrabStats,
     indexerSearch: getLastIndexerSearchStats(),
     deepbridUsenetFinder: getLastDeepbridUsenetFinderStats(),
     easynewsDirect: getLastEasynewsDirectStats(),
     newshostingDirect: getLastNewshostingStats(),
+    nexusMiatrix: getLastNexusMiatrixStats(),
     torrents: getLastTorrentStats(),
     upstreamAddons: getLastUpstreamAddonStats()
   };
@@ -385,21 +395,48 @@ function newshostingEncodedIdFromUrl(url: string): string | undefined {
   }
 }
 
+function nexusHashFromUrl(url: string): string | undefined {
+  try {
+    const parsed = new URL(url);
+    const match = parsed.pathname.match(/\/nexus\/nzb\/([^/]+)$/);
+    return match?.[1] ? decodeURIComponent(match[1]) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function prepareNzbUrlForDeepbrid(payload: ResolvePayload, userConfig: any, requestBaseUrl: string): Promise<ResolvePayload> {
   const encodedId = newshostingEncodedIdFromUrl(payload.nzbUrl);
-  if (!encodedId) return payload;
+  if (encodedId) {
+    const nzb = await createNewshostingNzbIsolated(encodedId, userConfig);
+    const cacheId = nanoid();
+    newshostingNzbCache.set(cacheId, {
+      nzb,
+      expiresAt: Date.now() + 10 * 60 * 1000
+    });
 
-  const nzb = await createNewshostingNzbIsolated(encodedId, userConfig);
-  const cacheId = nanoid();
-  newshostingNzbCache.set(cacheId, {
-    nzb,
-    expiresAt: Date.now() + 10 * 60 * 1000
-  });
+    return {
+      ...payload,
+      nzbUrl: `${requestBaseUrl.replace(/\/+$/, "")}/newshosting/cached/${cacheId}.nzb`
+    };
+  }
 
-  return {
-    ...payload,
-    nzbUrl: `${requestBaseUrl.replace(/\/+$/, "")}/newshosting/cached/${cacheId}.nzb`
-  };
+  const nexusHash = nexusHashFromUrl(payload.nzbUrl);
+  if (nexusHash) {
+    const nzb = await fetchNexusMiatrixNzb(nexusHash, userConfig);
+    const cacheId = nanoid();
+    nexusNzbCache.set(cacheId, {
+      nzb,
+      expiresAt: Date.now() + 10 * 60 * 1000
+    });
+
+    return {
+      ...payload,
+      nzbUrl: `${requestBaseUrl.replace(/\/+$/, "")}/nexus/cached/${cacheId}.nzb`
+    };
+  }
+
+  return payload;
 }
 
 function decodeJsonPayload(encoded: string): any {
@@ -708,9 +745,9 @@ function directModeCandidates(candidates: SourceCandidate[], limit: number): Sou
 async function pregrabExternalCandidates(client: DeepbridClient, candidates: SourceCandidate[], mode: "direct" | "prechecked" = "direct", userConfig?: any, requestBaseUrl?: string): Promise<SourceCandidate[]> {
   const startedAt = Date.now();
   const directMode = mode === "direct";
-  const hasNewshostingCandidates = candidates.some(candidate => candidate.origin === "newshosting-direct");
-  const deadlineMs = directMode ? (hasNewshostingCandidates ? 75000 : 22000) : 22000;
-  const maxAttempts = directMode ? (hasNewshostingCandidates ? 36 : 14) : 48;
+  const hasGeneratedNzbCandidates = candidates.some(candidate => candidate.origin === "newshosting-direct" || candidate.origin === "nexus-miatrix");
+  const deadlineMs = directMode ? (hasGeneratedNzbCandidates ? 75000 : 22000) : 22000;
+  const maxAttempts = directMode ? (hasGeneratedNzbCandidates ? 36 : 14) : 48;
   const maxReady = directMode ? 8 : 24;
   const sortedCandidates = candidates
     .filter(candidate => candidate.origin !== "deepbrid-official")
@@ -916,12 +953,13 @@ async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, 
     const client = new DeepbridClient(apiKey);
 
     const publicToken = token || "default_token";
-    const [officialResult, finderResult, indexerResult, easynewsResult, newshostingResult, torrentResult, upstreamAddonResult] = await Promise.allSettled([
+    const [officialResult, finderResult, indexerResult, easynewsResult, newshostingResult, nexusResult, torrentResult, upstreamAddonResult] = await Promise.allSettled([
       getOfficialDeepbridSources(client, media, userConfig),
       getDeepbridUsenetFinderSources(media, userConfig),
       getIndexerSources(client, media, userConfig),
       getEasynewsDirectSources(media, userConfig),
       getNewshostingSources(media, userConfig, dynamicBaseUrl, publicToken),
+      getNexusMiatrixSources(media, userConfig, dynamicBaseUrl, publicToken),
       getTorrentSources(client, media, userConfig, dynamicBaseUrl, publicToken),
       getUpstreamAddonSources(media, userConfig, dynamicBaseUrl, publicToken)
     ]);
@@ -930,12 +968,13 @@ async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, 
     const indexerCandidates = indexerResult.status === "fulfilled" ? indexerResult.value : [];
     const easynewsDirectCandidates = easynewsResult.status === "fulfilled" ? easynewsResult.value : [];
     const newshostingCandidates = newshostingResult.status === "fulfilled" ? newshostingResult.value : [];
+    const nexusCandidates = nexusResult.status === "fulfilled" ? nexusResult.value : [];
     const torrentCandidates = torrentResult.status === "fulfilled" ? torrentResult.value : [];
     const upstreamAddonCandidates = upstreamAddonResult.status === "fulfilled" ? upstreamAddonResult.value : [];
     const externalMode = userConfig?.externalResultMode === "prechecked" ? "prechecked" : "direct";
     const directLinksOnly = userConfig?.directLinksOnly !== false;
     const pregrabCandidates = directLinksOnly || userConfig?.newshostingPrecheck === true
-      ? [...indexerCandidates, ...newshostingCandidates]
+      ? [...indexerCandidates, ...newshostingCandidates, ...nexusCandidates]
       : indexerCandidates;
     const readyIndexerCandidates = await pregrabExternalCandidates(client, pregrabCandidates, externalMode, userConfig, dynamicBaseUrl);
     const externalCandidates = directLinksOnly
@@ -944,11 +983,13 @@ async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, 
       ? [
           ...indexerCandidates.filter(candidate => !isEasynewsCandidate(candidate)),
           ...newshostingCandidates,
+          ...nexusCandidates,
           ...readyIndexerCandidates
         ]
       : [
           ...readyIndexerCandidates,
-          ...newshostingCandidates
+          ...newshostingCandidates,
+          ...nexusCandidates
         ];
     
     const candidateGroups = directLinksOnly
@@ -1068,6 +1109,8 @@ app.get("/:token/health", async (request) => {
       easynewsDirectEnabled: Boolean(userConfig?.easynewsEnabled !== false && userConfig?.easynewsUsername && userConfig?.easynewsPassword),
       newshostingDirectConfigured: Boolean(userConfig?.newshostingUsername && userConfig?.newshostingPassword),
       newshostingDirectEnabled: Boolean(userConfig?.newshostingEnabled !== false && userConfig?.newshostingUsername && userConfig?.newshostingPassword),
+      nexusMiatrixConfigured: Boolean((userConfig?.nexusMiatrixCookie || process.env.NEXUS_MIATRIX_COOKIE) || ((userConfig?.nexusMiatrixEmail || process.env.NEXUS_MIATRIX_EMAIL) && (userConfig?.nexusMiatrixPassword || process.env.NEXUS_MIATRIX_PASSWORD))),
+      nexusMiatrixEnabled: Boolean(userConfig?.nexusMiatrixEnabled !== false && ((userConfig?.nexusMiatrixCookie || process.env.NEXUS_MIATRIX_COOKIE) || ((userConfig?.nexusMiatrixEmail || process.env.NEXUS_MIATRIX_EMAIL) && (userConfig?.nexusMiatrixPassword || process.env.NEXUS_MIATRIX_PASSWORD)))),
       deepbridUsenetFinderConfigured: Boolean(userConfig?.deepbridWebCookie || process.env.DEEPBRID_WEB_COOKIE),
       deepbridUsenetFinderEnabled: Boolean(userConfig?.deepbridUsenetFinderEnabled !== false && (userConfig?.deepbridWebCookie || process.env.DEEPBRID_WEB_COOKIE)),
       deepbridLibraryEnabled: Boolean(userConfig?.deepbridLibraryEnabled !== false),
@@ -1141,6 +1184,33 @@ app.get("/newshosting/cached/:cacheId", async (request, reply) => {
   }
   reply.header("Content-Type", "application/x-nzb; charset=utf-8");
   reply.header("Content-Disposition", "inline; filename=\"newshosting.nzb\"");
+  return reply.send(entry.nzb);
+});
+
+app.get("/:token/nexus/nzb/:releaseHash", async (request, reply) => {
+  const { token, releaseHash } = request.params as { token: string, releaseHash: string };
+  try {
+    const userConfig = decodeConfig(token);
+    const nzb = await fetchNexusMiatrixNzb(releaseHash, userConfig);
+    reply.header("Content-Type", "application/x-nzb; charset=utf-8");
+    reply.header("Content-Disposition", "inline; filename=\"nexus-miatrix.nzb\"");
+    return reply.send(nzb);
+  } catch (err) {
+    app.log.error(err);
+    return reply.status(404).send("NZB unavailable.");
+  }
+});
+
+app.get("/nexus/cached/:cacheId", async (request, reply) => {
+  const { cacheId } = request.params as { cacheId: string };
+  const normalizedId = cacheId.replace(/\.nzb$/i, "");
+  const entry = nexusNzbCache.get(normalizedId);
+  if (!entry || entry.expiresAt <= Date.now()) {
+    nexusNzbCache.delete(normalizedId);
+    return reply.status(404).send("NZB expired.");
+  }
+  reply.header("Content-Type", "application/x-nzb; charset=utf-8");
+  reply.header("Content-Disposition", "inline; filename=\"nexus-miatrix.nzb\"");
   return reply.send(entry.nzb);
 });
 

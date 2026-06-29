@@ -16,6 +16,7 @@ export type SourceCandidate = {
     | "althub"
     | "easynews-direct"
     | "newshosting-direct"
+    | "nexus-miatrix"
     | "deepbrid-torrent-library"
     | "external-torrent"
     | "stremio-addon-torrent"

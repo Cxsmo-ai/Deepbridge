@@ -224,7 +224,8 @@ function sourcePriority(candidate: SourceCandidate): number {
   if (candidate.origin === "deepbrid-usenet-finder") return 1;
   if (candidate.origin === "easynews-direct") return 2;
   if (candidate.origin === "newshosting-direct") return 3;
-  return 4;
+  if (candidate.origin === "nexus-miatrix") return 4;
+  return 5;
 }
 
 function qualityRank(quality: SourceCandidate["quality"]): number {

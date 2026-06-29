@@ -16,6 +16,7 @@ The format is inspired by Keep a Changelog, and this project uses human-readable
 - Finder browser-bridge status endpoint and dashboard pairing URL.
 - Deepbrid My Library movie, TV, and anime catalogs with refreshed direct playback links.
 - Native multi-architecture Docker Hub publishing for `linux/amd64` and `linux/arm64`.
+- Optional Nexus/Miatrix website source that searches the logged-in website flow without the API, supports cookie or email/password login, and submits selected NZBs through Deepbrid.
 
 ### Changed
 - Repository metadata prepared for public Apache-2.0 release.
