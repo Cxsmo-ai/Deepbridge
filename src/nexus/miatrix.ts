@@ -1,5 +1,9 @@
 import { nanoid } from "nanoid";
 import { request } from "undici";
+import { spawn } from "child_process";
+import fs from "fs";
+import os from "os";
+import path from "path";
 import { MediaRequest } from "../deepbrid/apiClient";
 import { makeMediaKey } from "../core/mediaKey";
 import { parseRelease } from "../core/parseRelease";
@@ -20,6 +24,7 @@ type NexusStats = {
   failedSearches: number;
   detailPages: number;
   matchedDetailPages: number;
+  browserEpisodePages: number;
   rawItems: number;
   dedupedItems: number;
   filteredItems: number;
@@ -50,6 +55,7 @@ let lastNexusStats: NexusStats = {
   failedSearches: 0,
   detailPages: 0,
   matchedDetailPages: 0,
+  browserEpisodePages: 0,
   rawItems: 0,
   dedupedItems: 0,
   filteredItems: 0,
@@ -75,6 +81,7 @@ function getConfig(userConfig?: any) {
     password,
     userAgent: String(userConfig?.nexusMiatrixUserAgent || process.env.NEXUS_MIATRIX_USER_AGENT || DEFAULT_USER_AGENT),
     searchTimeoutMs: Number(userConfig?.nexusMiatrixSearchTimeout || userConfig?.indexerTimeout || process.env.NEXUS_MIATRIX_SEARCH_TIMEOUT || 8000) || 8000,
+    browserTimeoutMs: Number(userConfig?.nexusMiatrixBrowserTimeout || process.env.NEXUS_MIATRIX_BROWSER_TIMEOUT || 32000) || 32000,
     nzbTimeoutMs: Number(userConfig?.nexusMiatrixNzbTimeout || userConfig?.resolveTimeout || process.env.NEXUS_MIATRIX_NZB_TIMEOUT || 25000) || 25000,
     maxResults: Math.max(0, Math.min(Number(userConfig?.nexusMiatrixMaxResults || process.env.NEXUS_MIATRIX_MAX_RESULTS || 2) || 2, 10))
   };
@@ -341,6 +348,209 @@ function parseDetailLinks(html: string, media: MediaRequest): string[] {
   return [...links].slice(0, 8);
 }
 
+function findChromiumExecutable(): string | undefined {
+  const candidates = [
+    process.env.NEXUS_MIATRIX_CHROMIUM_PATH,
+    "/usr/bin/chromium-browser",
+    "/usr/bin/chromium",
+    "/usr/bin/google-chrome-stable",
+    "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+  ].filter((candidate): candidate is string => Boolean(candidate));
+  return candidates.find(candidate => fs.existsSync(candidate));
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function waitForJson(url: string, options: any = {}, timeoutMs = 10000): Promise<any> {
+  const deadline = Date.now() + timeoutMs;
+  let lastError = "";
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(url, options);
+      if (response.ok) return response.json();
+      lastError = `http_${response.status}`;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+    await sleep(250);
+  }
+  throw new Error(`nexus_browser_cdp_unavailable_${lastError || "timeout"}`);
+}
+
+async function withCdp<T>(port: number, targetUrl: string, callback: (send: (method: string, params?: any) => Promise<any>) => Promise<T>): Promise<T> {
+  const target = await waitForJson(`http://127.0.0.1:${port}/json/new?${targetUrl}`, { method: "PUT" }, 15000);
+  const WebSocketCtor = (globalThis as any).WebSocket;
+  if (!WebSocketCtor) throw new Error("nexus_browser_no_websocket");
+  const ws = new WebSocketCtor(target.webSocketDebuggerUrl);
+  const pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void }>();
+  let nextId = 1;
+
+  await new Promise<void>((resolve, reject) => {
+    ws.onopen = () => resolve();
+    ws.onerror = () => reject(new Error("nexus_browser_ws_error"));
+  });
+
+  ws.onmessage = (message: any) => {
+    const data = JSON.parse(String(message.data));
+    const waiter = pending.get(data.id);
+    if (!waiter) return;
+    pending.delete(data.id);
+    if (data.error) waiter.reject(new Error(JSON.stringify(data.error)));
+    else waiter.resolve(data.result);
+  };
+
+  const send = (method: string, params: any = {}) => {
+    const id = nextId++;
+    ws.send(JSON.stringify({ id, method, params }));
+    return new Promise<any>((resolve, reject) => {
+      pending.set(id, { resolve, reject });
+      setTimeout(() => {
+        if (!pending.has(id)) return;
+        pending.delete(id);
+        reject(new Error(`nexus_browser_cdp_timeout_${method}`));
+      }, 30000);
+    });
+  };
+
+  try {
+    await send("Page.enable");
+    await send("Network.enable");
+    await send("Runtime.enable");
+    return await callback(send);
+  } finally {
+    try {
+      ws.close();
+    } catch {
+      // ignored
+    }
+  }
+}
+
+async function cdpEval(send: (method: string, params?: any) => Promise<any>, expression: string): Promise<any> {
+  const result = await send("Runtime.evaluate", {
+    expression,
+    awaitPromise: true,
+    returnByValue: true
+  });
+  if (result.exceptionDetails) throw new Error("nexus_browser_eval_failed");
+  return result.result?.value;
+}
+
+async function cdpWaitFor(
+  send: (method: string, params?: any) => Promise<any>,
+  expression: string,
+  timeoutMs: number,
+  intervalMs = 500
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      if (await cdpEval(send, expression)) return true;
+    } catch {
+      // Continue polling while Blazor is still attaching.
+    }
+    await sleep(intervalMs);
+  }
+  return false;
+}
+
+function cdpSetCookieExpression(cookie: string): string {
+  const pairs = cookie.split(";")
+    .map(part => part.trim())
+    .filter(part => /^[^=]+=/.test(part))
+    .map(part => {
+      const index = part.indexOf("=");
+      return { name: part.slice(0, index), value: part.slice(index + 1) };
+    });
+  return JSON.stringify(pairs);
+}
+
+async function fetchSeriesEpisodeResultsWithBrowser(
+  media: MediaRequest,
+  detailPath: string,
+  config: ReturnType<typeof getConfig>
+): Promise<NexusSearchResult[]> {
+  if (media.type !== "series" || !media.season || !media.episode) return [];
+  const executablePath = findChromiumExecutable();
+  if (!executablePath) throw new Error("nexus_browser_chromium_missing");
+
+  const port = 9300 + Math.floor(Math.random() * 500);
+  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "deepbridge-nexus-"));
+  const args = [
+    "--headless=new",
+    `--remote-debugging-port=${port}`,
+    `--user-data-dir=${userDataDir}`,
+    "--disable-gpu",
+    "--disable-extensions",
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--no-sandbox",
+    "--disable-dev-shm-usage"
+  ];
+  const browser = spawn(executablePath, args, { stdio: "ignore" });
+  const deadline = Date.now() + config.browserTimeoutMs;
+
+  try {
+    const sessionCookie = await loginCookie(config);
+    return await withCdp<NexusSearchResult[]>(port, `${NEXUS_BASE_URL}/`, async send => {
+      const remaining = () => Math.max(1000, deadline - Date.now());
+      await send("Network.setCookies", {
+        cookies: JSON.parse(cdpSetCookieExpression(sessionCookie)).map((cookie: any) => ({
+          ...cookie,
+          domain: "nexus.miatrix.com",
+          path: "/",
+          secure: true
+        }))
+      });
+
+      await send("Page.navigate", { url: `${NEXUS_BASE_URL}${detailPath}` });
+      await cdpWaitFor(send, "document.querySelectorAll('.ep-tile').length > 0", Math.min(9000, remaining()));
+      const seasonCode = `S${String(media.season).padStart(2, "0")}`;
+      const episodeCode = `E${String(media.episode).padStart(2, "0")}`;
+
+      await cdpEval(send, `(() => {
+        const button = [...document.querySelectorAll('button')].find(element => element.innerText && element.innerText.includes('Expand'));
+        if (button) button.click();
+        return true;
+      })()`);
+      await sleep(Math.min(800, remaining()));
+      await cdpEval(send, `(() => {
+        const seasonCode = ${JSON.stringify(seasonCode)};
+        const element = [...document.querySelectorAll('button,.season-tab,.season-pill,.nav-link,span,div')]
+          .find(candidate => candidate.innerText && candidate.innerText.trim() === seasonCode);
+        if (element) element.click();
+        return Boolean(element);
+      })()`);
+      await sleep(Math.min(1200, remaining()));
+      await cdpEval(send, `(() => {
+        const episodeCode = ${JSON.stringify(episodeCode)};
+        const tile = [...document.querySelectorAll('.ep-tile')]
+          .find(candidate => candidate.innerText && candidate.innerText.includes(episodeCode));
+        if (tile) tile.click();
+        return Boolean(tile);
+      })()`);
+      await cdpWaitFor(send, "document.documentElement.outerHTML.includes('/getnzb/')", Math.min(9000, remaining()));
+
+      const html = await cdpEval(send, "document.documentElement.outerHTML");
+      return parseNexusSearchResults(String(html || ""));
+    });
+  } finally {
+    try {
+      browser.kill();
+    } catch {
+      // ignored
+    }
+    try {
+      fs.rmSync(userDataDir, { recursive: true, force: true });
+    } catch {
+      // ignored
+    }
+  }
+}
+
 function detailPageMatchesMedia(html: string, media: MediaRequest, metadata: MediaMetadata): boolean {
   if (media.imdbId.startsWith("tt") && new RegExp(`(?:imdb\\.com/title/|\\b)${media.imdbId}\\b`, "i").test(html)) {
     return true;
@@ -381,7 +591,17 @@ async function fetchTitleDetailResults(
       const detailHtml = await fetchNexusPage(link, config);
       if (!detailPageMatchesMedia(detailHtml, media, metadata)) continue;
       stats.matchedDetailPages++;
-      results.push(...parseNexusSearchResults(detailHtml));
+      const parsedResults = parseNexusSearchResults(detailHtml);
+      results.push(...parsedResults);
+      if (parsedResults.length === 0 && media.type === "series") {
+        try {
+          stats.browserEpisodePages++;
+          results.push(...await fetchSeriesEpisodeResultsWithBrowser(media, link, config));
+        } catch (error) {
+          const category = errorCategory(error);
+          stats.errors[`browser_${category}`] = (stats.errors[`browser_${category}`] || 0) + 1;
+        }
+      }
     } catch (error) {
       const category = errorCategory(error);
       stats.errors[category] = (stats.errors[category] || 0) + 1;
@@ -453,6 +673,7 @@ export async function getNexusMiatrixSources(
     failedSearches: 0,
     detailPages: 0,
     matchedDetailPages: 0,
+    browserEpisodePages: 0,
     rawItems: 0,
     dedupedItems: 0,
     filteredItems: 0,
