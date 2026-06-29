@@ -279,6 +279,33 @@ export function parseNexusSearchResults(html: string): NexusSearchResult[] {
       grabs: parseGrabs(text) || (cells[7] && /^\d+$/.test(cells[7]) ? Number(cells[7]) : undefined)
     });
   }
+  if (results.length > 0) return results;
+
+  const nzbHashes = new Set(
+    [...html.matchAll(/href=["'](?:https?:\/\/nexus\.miatrix\.com)?\/?getnzb\/([A-Za-z0-9_-]+)["']/gi)]
+      .map(match => match[1])
+  );
+  const seen = new Set<string>();
+  for (const match of html.matchAll(/href=["'](?:https?:\/\/nexus\.miatrix\.com)?\/?details\/([A-Za-z0-9_-]+)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
+    const releaseHash = match[1];
+    if (!releaseHash || seen.has(releaseHash) || !nzbHashes.has(releaseHash)) continue;
+    const title = stripTags(match[2] || "");
+    if (!title || /^name$/i.test(title)) continue;
+
+    const index = match.index || 0;
+    const context = html.slice(Math.max(0, index - 1200), Math.min(html.length, index + 2400));
+    const text = stripTags(context);
+    seen.add(releaseHash);
+    results.push({
+      releaseHash,
+      nzbHash: releaseHash,
+      title,
+      sizeBytes: parseSizeBytes(text),
+      category: /\bTV\b/i.test(text) ? "TV" : undefined,
+      posted: text.match(/\b\d+\s*(?:Yrs?|Years?|Mos?|Months?|Days?|Hrs?|Hours?)\b/i)?.[0],
+      grabs: parseGrabs(text)
+    });
+  }
   return results;
 }
 
