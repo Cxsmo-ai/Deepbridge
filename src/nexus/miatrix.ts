@@ -256,14 +256,14 @@ export function parseNexusSearchResults(html: string): NexusSearchResult[] {
   const rows = [...html.matchAll(/<tr\b[\s\S]*?<\/tr>/gi)].map(match => match[0]);
   const results: NexusSearchResult[] = [];
   for (const row of rows) {
-    const detailMatch = row.match(/href=["']\/?details\/([A-Za-z0-9_-]+)["']/i);
-    const nzbMatch = row.match(/href=["']\/?getnzb\/([A-Za-z0-9_-]+)["']/i);
+    const detailMatch = row.match(/href=["'](?:https?:\/\/nexus\.miatrix\.com)?\/?details\/([A-Za-z0-9_-]+)["']/i);
+    const nzbMatch = row.match(/href=["'](?:https?:\/\/nexus\.miatrix\.com)?\/?getnzb\/([A-Za-z0-9_-]+)["']/i);
     if (!detailMatch && !nzbMatch) continue;
     const releaseHash = detailMatch?.[1] || nzbMatch?.[1];
     const nzbHash = nzbMatch?.[1] || releaseHash;
     if (!releaseHash || !nzbHash) continue;
 
-    const titleMatch = row.match(/href=["']\/?details\/[A-Za-z0-9_-]+["'][^>]*>([\s\S]*?)<\/a>/i);
+    const titleMatch = row.match(/href=["'](?:https?:\/\/nexus\.miatrix\.com)?\/?details\/[A-Za-z0-9_-]+["'][^>]*>([\s\S]*?)<\/a>/i);
     const cells = [...row.matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)].map(match => stripTags(match[1]));
     const title = stripTags(titleMatch?.[1] || cells[0] || "");
     if (!title || /^name$/i.test(title)) continue;
@@ -511,28 +511,36 @@ async function fetchSeriesEpisodeResultsWithBrowser(
       const seasonCode = `S${String(media.season).padStart(2, "0")}`;
       const episodeCode = `E${String(media.episode).padStart(2, "0")}`;
 
-      await cdpEval(send, `(() => {
-        const button = [...document.querySelectorAll('button')].find(element => element.innerText && element.innerText.includes('Expand'));
-        if (button) button.click();
-        return true;
-      })()`);
-      await sleep(Math.min(800, remaining()));
-      await cdpEval(send, `(() => {
+      const clickSeason = async () => cdpEval(send, `(() => {
         const seasonCode = ${JSON.stringify(seasonCode)};
-        const element = [...document.querySelectorAll('button,.season-tab,.season-pill,.nav-link,span,div')]
+        const element = [...document.querySelectorAll('button,.season-tab,.season-pill,.nav-link')]
           .find(candidate => candidate.innerText && candidate.innerText.trim() === seasonCode);
         if (element) element.click();
         return Boolean(element);
       })()`);
-      await sleep(Math.min(1200, remaining()));
-      await cdpEval(send, `(() => {
+
+      if (!await clickSeason()) {
+        await cdpEval(send, `(() => {
+          const button = [...document.querySelectorAll('button')].find(element => element.innerText && element.innerText.includes('Expand'));
+          if (button) button.click();
+          return true;
+        })()`);
+        await cdpWaitFor(send, `(() => [...document.querySelectorAll('button,.season-tab,.season-pill,.nav-link')]
+          .some(candidate => candidate.innerText && candidate.innerText.trim() === ${JSON.stringify(seasonCode)}))()`, Math.min(6000, remaining()));
+        await clickSeason();
+      }
+
+      await cdpWaitFor(send, `(() => [...document.querySelectorAll('.ep-tile')]
+        .some(candidate => candidate.innerText && candidate.innerText.includes(${JSON.stringify(episodeCode)})))()`, Math.min(9000, remaining()));
+      const clickedEpisode = await cdpEval(send, `(() => {
         const episodeCode = ${JSON.stringify(episodeCode)};
         const tile = [...document.querySelectorAll('.ep-tile')]
           .find(candidate => candidate.innerText && candidate.innerText.includes(episodeCode));
         if (tile) tile.click();
         return Boolean(tile);
       })()`);
-      await cdpWaitFor(send, "document.documentElement.outerHTML.includes('/getnzb/')", Math.min(9000, remaining()));
+      if (!clickedEpisode) return [];
+      await cdpWaitFor(send, "document.documentElement.outerHTML.includes('/getnzb/')", Math.min(12000, remaining()));
 
       const html = await cdpEval(send, "document.documentElement.outerHTML");
       return parseNexusSearchResults(String(html || ""));
