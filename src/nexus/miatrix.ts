@@ -14,9 +14,12 @@ type NexusStats = {
   finishedAt: string;
   configured: boolean;
   mediaKey: string;
+  searchMode: string;
   plannedSearches: number;
   fulfilledSearches: number;
   failedSearches: number;
+  detailPages: number;
+  matchedDetailPages: number;
   rawItems: number;
   dedupedItems: number;
   filteredItems: number;
@@ -41,9 +44,12 @@ let lastNexusStats: NexusStats = {
   finishedAt: "",
   configured: false,
   mediaKey: "",
+  searchMode: "",
   plannedSearches: 0,
   fulfilledSearches: 0,
   failedSearches: 0,
+  detailPages: 0,
+  matchedDetailPages: 0,
   rawItems: 0,
   dedupedItems: 0,
   filteredItems: 0,
@@ -207,15 +213,6 @@ function buildQueryTitles(metadata: MediaMetadata, media: MediaRequest): string[
   return out.slice(0, 3);
 }
 
-function buildQueries(metadata: MediaMetadata, media: MediaRequest): string[] {
-  const titles = buildQueryTitles(metadata, media);
-  if (media.type === "series" && media.season && media.episode) {
-    const code = `S${String(media.season).padStart(2, "0")}E${String(media.episode).padStart(2, "0")}`;
-    return [...new Set(titles.flatMap(title => [`${title} ${code}`, title]))].slice(0, 4);
-  }
-  return [...new Set(titles.flatMap(title => metadata.year ? [`${title} ${metadata.year}`, title] : [title]))].slice(0, 4);
-}
-
 function decodeHtml(value: string): string {
   return value
     .replace(/&nbsp;/gi, " ")
@@ -306,9 +303,9 @@ function errorCategory(error: unknown): string {
   return "other";
 }
 
-async function fetchSearch(query: string, config: ReturnType<typeof getConfig>): Promise<NexusSearchResult[]> {
+async function fetchNexusPage(path: string, config: ReturnType<typeof getConfig>): Promise<string> {
   const cookie = await loginCookie(config);
-  const url = `${NEXUS_BASE_URL}/browse?search=${encodeURIComponent(query)}`;
+  const url = path.startsWith("http") ? path : `${NEXUS_BASE_URL}${path.startsWith("/") ? "" : "/"}${path}`;
   const res = await request(url, {
     signal: AbortSignal.timeout(config.searchTimeoutMs),
     headers: {
@@ -321,8 +318,77 @@ async function fetchSearch(query: string, config: ReturnType<typeof getConfig>):
   if (res.statusCode === 401 || res.statusCode === 403 || /login/i.test(String(res.headers.location || ""))) {
     throw new Error(`nexus_auth_${res.statusCode}`);
   }
-  if (res.statusCode >= 400) throw new Error(`nexus_search_http_${res.statusCode}`);
-  return parseNexusSearchResults(text);
+  if (res.statusCode >= 400) throw new Error(`nexus_http_${res.statusCode}`);
+  return text;
+}
+
+function nexusTitleSearchPath(media: MediaRequest, query: string): string {
+  const section = media.type === "series" ? "series" : "movies";
+  return `/${section}?search=${encodeURIComponent(query)}`;
+}
+
+function nexusDetailPathPrefix(media: MediaRequest): string {
+  return media.type === "series" ? "/series-details/" : "/movie-details/";
+}
+
+function parseDetailLinks(html: string, media: MediaRequest): string[] {
+  const prefix = nexusDetailPathPrefix(media).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const links = new Set<string>();
+  for (const match of html.matchAll(new RegExp(`href=["'](${prefix}[^"']+)["']`, "gi"))) {
+    const href = decodeHtml(match[1]).split("#")[0];
+    if (href) links.add(href.startsWith("/") ? href : `/${href}`);
+  }
+  return [...links].slice(0, 8);
+}
+
+function detailPageMatchesMedia(html: string, media: MediaRequest, metadata: MediaMetadata): boolean {
+  if (media.imdbId.startsWith("tt") && new RegExp(`(?:imdb\\.com/title/|\\b)${media.imdbId}\\b`, "i").test(html)) {
+    return true;
+  }
+  const text = normalizeComparableTitle(stripTags(html));
+  const expectedTitle = normalizeComparableTitle(metadata.title || "");
+  if (!expectedTitle || !text.includes(expectedTitle)) return false;
+  if (media.type === "movie" && metadata.year && !text.includes(String(metadata.year))) return false;
+  return true;
+}
+
+async function fetchTitleDetailResults(
+  media: MediaRequest,
+  metadata: MediaMetadata,
+  config: ReturnType<typeof getConfig>,
+  stats: NexusStats
+): Promise<NexusSearchResult[]> {
+  const queries = buildQueryTitles(metadata, media);
+  stats.plannedSearches = queries.length;
+
+  const detailLinks = new Set<string>();
+  for (const query of queries) {
+    try {
+      const searchHtml = await fetchNexusPage(nexusTitleSearchPath(media, query), config);
+      stats.fulfilledSearches++;
+      for (const link of parseDetailLinks(searchHtml, media)) detailLinks.add(link);
+    } catch (error) {
+      stats.failedSearches++;
+      const category = errorCategory(error);
+      stats.errors[category] = (stats.errors[category] || 0) + 1;
+    }
+  }
+
+  const results: NexusSearchResult[] = [];
+  for (const link of [...detailLinks].slice(0, 6)) {
+    try {
+      stats.detailPages++;
+      const detailHtml = await fetchNexusPage(link, config);
+      if (!detailPageMatchesMedia(detailHtml, media, metadata)) continue;
+      stats.matchedDetailPages++;
+      results.push(...parseNexusSearchResults(detailHtml));
+    } catch (error) {
+      const category = errorCategory(error);
+      stats.errors[category] = (stats.errors[category] || 0) + 1;
+    }
+  }
+
+  return results;
 }
 
 function nexusRankScore(result: NexusSearchResult, matchScore: number): number {
@@ -381,9 +447,12 @@ export async function getNexusMiatrixSources(
     finishedAt: "",
     configured: config.enabled,
     mediaKey: makeMediaKey(media),
+    searchMode: media.type === "series" ? "series-title-details" : "movie-title-details",
     plannedSearches: 0,
     fulfilledSearches: 0,
     failedSearches: 0,
+    detailPages: 0,
+    matchedDetailPages: 0,
     rawItems: 0,
     dedupedItems: 0,
     filteredItems: 0,
@@ -400,27 +469,16 @@ export async function getNexusMiatrixSources(
   }
 
   const metadata = await fetchMediaMetadata(media);
-  const queries = buildQueries(metadata, media);
-  stats.plannedSearches = queries.length;
   const seen = new Set<string>();
   const results: NexusSearchResult[] = [];
 
-  for (const query of queries) {
-    try {
-      const searchResults = await fetchSearch(query, config);
-      stats.fulfilledSearches++;
-      for (const result of searchResults) {
-        stats.rawItems++;
-        const key = result.nzbHash || result.releaseHash;
-        if (!seen.has(key)) {
-          seen.add(key);
-          results.push(result);
-        }
-      }
-    } catch (error) {
-      stats.failedSearches++;
-      const category = errorCategory(error);
-      stats.errors[category] = (stats.errors[category] || 0) + 1;
+  const searchResults = await fetchTitleDetailResults(media, metadata, config, stats);
+  for (const result of searchResults) {
+    stats.rawItems++;
+    const key = result.nzbHash || result.releaseHash;
+    if (!seen.has(key)) {
+      seen.add(key);
+      results.push(result);
     }
   }
 
