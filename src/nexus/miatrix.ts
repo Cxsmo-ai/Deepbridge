@@ -329,6 +329,17 @@ function sizeLooksPlayable(size: number | undefined): boolean {
   return gb >= 0.2 && gb <= 120;
 }
 
+function movieYearLooksCompatible(title: string, media: MediaRequest, metadata: MediaMetadata): boolean {
+  if (media.type !== "movie" || !metadata.year) return true;
+  const releaseYear = parseInt(title.match(/\b(19|20)\d{2}\b/)?.[0] || "", 10);
+  return !Number.isFinite(releaseYear) || releaseYear === metadata.year;
+}
+
+function contentKindLooksCompatible(title: string, metadata: MediaMetadata): boolean {
+  if (metadata.isAnime) return true;
+  return !/\b(?:anime|the anime series)\b/i.test(title);
+}
+
 function errorCategory(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error || "unknown");
   if (/401|403|auth|login|cookie/i.test(message)) return "auth";
@@ -361,6 +372,32 @@ function nexusTitleSearchPath(media: MediaRequest, query: string): string {
   return `/${section}?search=${encodeURIComponent(query)}`;
 }
 
+function nexusReleaseSearchPaths(media: MediaRequest, metadata: MediaMetadata): string[] {
+  if (media.type !== "series" || !media.season || !media.episode) return [];
+  const queries = buildQueryTitles(metadata, media);
+  const seasonEpisode = `S${String(media.season).padStart(2, "0")}E${String(media.episode).padStart(2, "0")}`;
+  const rawQueries = queries.flatMap(query => {
+    const normalized = normalizeComparableTitle(query);
+    return [
+      `${query} ${seasonEpisode}`,
+      `${query}.${seasonEpisode}`,
+      `${normalized} ${seasonEpisode}`,
+      `${normalized.replace(/\s+/g, ".")}.${seasonEpisode}`
+    ];
+  });
+  const seen = new Set<string>();
+  const paths: string[] = [];
+  for (const query of rawQueries) {
+    const clean = query.replace(/\s+/g, " ").trim();
+    const key = clean.toLowerCase();
+    if (!clean || seen.has(key)) continue;
+    seen.add(key);
+    const encoded = encodeURIComponent(clean);
+    paths.push(`/browse?search=${encoded}&cat=tv`);
+  }
+  return paths.slice(0, 8);
+}
+
 function nexusDetailPathPrefix(media: MediaRequest): string {
   return media.type === "series" ? "/series-details/" : "/movie-details/";
 }
@@ -388,7 +425,10 @@ function findChromiumExecutable(): string | undefined {
 }
 
 function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise(resolve => {
+    const timer = setTimeout(resolve, ms);
+    timer.unref?.();
+  });
 }
 
 async function waitForJson(url: string, options: any = {}, timeoutMs = 10000): Promise<any> {
@@ -407,7 +447,7 @@ async function waitForJson(url: string, options: any = {}, timeoutMs = 10000): P
   throw new Error(`nexus_browser_cdp_unavailable_${lastError || "timeout"}`);
 }
 
-async function withCdp<T>(port: number, targetUrl: string, callback: (send: (method: string, params?: any) => Promise<any>) => Promise<T>): Promise<T> {
+async function withCdp<T>(port: number, targetUrl: string, callback: (send: (method: string, params?: any) => Promise<any>) => Promise<T>, timeoutMs = 30000): Promise<T> {
   const target = await waitForJson(`http://127.0.0.1:${port}/json/new?${targetUrl}`, { method: "PUT" }, 15000);
   const WebSocketCtor = (globalThis as any).WebSocket;
   if (!WebSocketCtor) throw new Error("nexus_browser_no_websocket");
@@ -434,11 +474,12 @@ async function withCdp<T>(port: number, targetUrl: string, callback: (send: (met
     ws.send(JSON.stringify({ id, method, params }));
     return new Promise<any>((resolve, reject) => {
       pending.set(id, { resolve, reject });
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         if (!pending.has(id)) return;
         pending.delete(id);
         reject(new Error(`nexus_browser_cdp_timeout_${method}`));
       }, 30000);
+      timer.unref?.();
     });
   };
 
@@ -446,8 +487,16 @@ async function withCdp<T>(port: number, targetUrl: string, callback: (send: (met
     await send("Page.enable");
     await send("Network.enable");
     await send("Runtime.enable");
-    return await callback(send);
+    const timeout = new Promise<T>((_, reject) => {
+      const timer = setTimeout(() => reject(new Error("nexus_browser_timeout")), timeoutMs);
+      timer.unref?.();
+    });
+    return await Promise.race([callback(send), timeout]);
   } finally {
+    for (const [id, waiter] of pending) {
+      pending.delete(id);
+      waiter.reject(new Error("nexus_browser_cdp_closed"));
+    }
     try {
       ws.close();
     } catch {
@@ -538,25 +587,33 @@ async function fetchSeriesEpisodeResultsWithBrowser(
       const seasonCode = `S${String(media.season).padStart(2, "0")}`;
       const episodeCode = `E${String(media.episode).padStart(2, "0")}`;
 
+      await cdpEval(send, `(() => {
+        const button = [...document.querySelectorAll('button')].find(element => element.innerText && element.innerText.includes('Expand'));
+        if (button) button.click();
+        return true;
+      })()`);
+      await sleep(Math.min(1600, remaining()));
+
       const clickSeason = async () => cdpEval(send, `(() => {
         const seasonCode = ${JSON.stringify(seasonCode)};
-        const element = [...document.querySelectorAll('button,.season-tab,.season-pill,.nav-link')]
-          .find(candidate => candidate.innerText && candidate.innerText.trim() === seasonCode);
+        const exact = [...document.querySelectorAll('button,.season-tab,.season-pill,.nav-link,span,div')]
+          .filter(candidate => candidate.innerText && candidate.innerText.trim() === seasonCode);
+        const element = exact.find(candidate => candidate.tagName === 'BUTTON')
+          || exact.find(candidate => candidate.getAttribute && candidate.getAttribute('role') === 'button')
+          || exact[exact.length - 1];
         if (element) element.click();
         return Boolean(element);
       })()`);
 
-      if (!await clickSeason()) {
-        await cdpEval(send, `(() => {
-          const button = [...document.querySelectorAll('button')].find(element => element.innerText && element.innerText.includes('Expand'));
-          if (button) button.click();
-          return true;
-        })()`);
-        await cdpWaitFor(send, `(() => [...document.querySelectorAll('button,.season-tab,.season-pill,.nav-link')]
+      const selectedSeason = await clickSeason();
+      if (!selectedSeason) {
+        await cdpWaitFor(send, `(() => [...document.querySelectorAll('button,.season-tab,.season-pill,.nav-link,span,div')]
           .some(candidate => candidate.innerText && candidate.innerText.trim() === ${JSON.stringify(seasonCode)}))()`, Math.min(6000, remaining()));
         await clickSeason();
       }
 
+      await sleep(Math.min(1400, remaining()));
+      const expectedEpisodeHeader = `${seasonCode} · Episode ${String(media.episode).padStart(2, "0")}`;
       await cdpWaitFor(send, `(() => [...document.querySelectorAll('.ep-tile')]
         .some(candidate => candidate.innerText && candidate.innerText.includes(${JSON.stringify(episodeCode)})))()`, Math.min(9000, remaining()));
       const clickedEpisode = await cdpEval(send, `(() => {
@@ -567,11 +624,19 @@ async function fetchSeriesEpisodeResultsWithBrowser(
         return Boolean(tile);
       })()`);
       if (!clickedEpisode) return [];
+      await sleep(Math.min(1000, remaining()));
+      const expectedEpisodeNumber = `Episode ${String(media.episode).padStart(2, "0")}`;
+      if (!await cdpWaitFor(send, `(() => {
+        const text = document.body.innerText || '';
+        return text.includes(${JSON.stringify(seasonCode)}) && text.includes(${JSON.stringify(expectedEpisodeNumber)});
+      })()`, Math.min(6000, remaining()))) {
+        return [];
+      }
       await cdpWaitFor(send, "document.documentElement.outerHTML.includes('/getnzb/')", Math.min(12000, remaining()));
 
       const html = await cdpEval(send, "document.documentElement.outerHTML");
       return parseNexusSearchResults(String(html || ""));
-    });
+    }, config.browserTimeoutMs);
   } finally {
     try {
       browser.kill();
@@ -637,12 +702,39 @@ async function fetchTitleDetailResults(
           stats.errors[`browser_${category}`] = (stats.errors[`browser_${category}`] || 0) + 1;
         }
       }
+      if (media.type === "series") break;
     } catch (error) {
       const category = errorCategory(error);
       stats.errors[category] = (stats.errors[category] || 0) + 1;
     }
   }
 
+  return results;
+}
+
+async function fetchExactReleaseSearchResults(
+  media: MediaRequest,
+  metadata: MediaMetadata,
+  config: ReturnType<typeof getConfig>,
+  stats: NexusStats
+): Promise<NexusSearchResult[]> {
+  const paths = nexusReleaseSearchPaths(media, metadata);
+  if (paths.length === 0) return [];
+
+  const results: NexusSearchResult[] = [];
+  for (const path of paths) {
+    try {
+      stats.plannedSearches++;
+      const html = await fetchNexusPage(path, config);
+      stats.fulfilledSearches++;
+      results.push(...parseNexusSearchResults(html));
+      if (results.length >= config.maxResults * 3) break;
+    } catch (error) {
+      stats.failedSearches++;
+      const category = errorCategory(error);
+      stats.errors[`exact_${category}`] = (stats.errors[`exact_${category}`] || 0) + 1;
+    }
+  }
   return results;
 }
 
@@ -729,6 +821,10 @@ export async function getNexusMiatrixSources(
   const results: NexusSearchResult[] = [];
 
   const searchResults = await fetchTitleDetailResults(media, metadata, config, stats);
+  if (media.type === "series" && searchResults.length === 0) {
+    stats.searchMode = "series-title-details+exact-release";
+    searchResults.push(...await fetchExactReleaseSearchResults(media, metadata, config, stats));
+  }
   for (const result of searchResults) {
     stats.rawItems++;
     const key = result.nzbHash || result.releaseHash;
@@ -744,6 +840,8 @@ export async function getNexusMiatrixSources(
     .filter(result => !isArchiveRelease(result.title))
     .filter(result => looksLikeVideoRelease(result.title))
     .filter(result => !hasBadReleaseSignal(result.title))
+    .filter(result => movieYearLooksCompatible(result.title, media, metadata))
+    .filter(result => contentKindLooksCompatible(result.title, metadata))
     .filter(result => sizeLooksPlayable(result.sizeBytes));
   stats.filteredItems = filtered.length;
 
