@@ -340,6 +340,21 @@ function contentKindLooksCompatible(title: string, metadata: MediaMetadata): boo
   return !/\b(?:anime|the anime series)\b/i.test(title);
 }
 
+function seriesTitleLooksCompatible(title: string, media: MediaRequest, metadata: MediaMetadata): boolean {
+  if (media.type !== "series" || !media.season || !media.episode) return true;
+  const expectedTitle = normalizeComparableTitle(metadata.title || (media as any).title || "");
+  if (!expectedTitle) return true;
+
+  const seasonEpisode = new RegExp(`\\bS0*${media.season}E0*${media.episode}\\b`, "i");
+  const marker = title.search(seasonEpisode);
+  if (marker < 0) return true;
+
+  const releasePrefix = normalizeComparableTitle(title.slice(0, marker));
+  return releasePrefix === expectedTitle
+    || releasePrefix.startsWith(`${expectedTitle} `)
+    || releasePrefix.startsWith(`${expectedTitle}.`);
+}
+
 function errorCategory(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error || "unknown");
   if (/401|403|auth|login|cookie/i.test(message)) return "auth";
@@ -842,6 +857,7 @@ export async function getNexusMiatrixSources(
     .filter(result => !hasBadReleaseSignal(result.title))
     .filter(result => movieYearLooksCompatible(result.title, media, metadata))
     .filter(result => contentKindLooksCompatible(result.title, metadata))
+    .filter(result => seriesTitleLooksCompatible(result.title, media, metadata))
     .filter(result => sizeLooksPlayable(result.sizeBytes));
   stats.filteredItems = filtered.length;
 
