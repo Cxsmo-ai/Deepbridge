@@ -19,6 +19,7 @@
 <p align="center">
   <a href="#quick-start">Quick start</a> |
   <a href="docs/DOCKER.md">Docker</a> |
+  <a href="docs/wiki/Home.md">Full wiki</a> |
   <a href="docs/CONFIGURATION.md">Configuration</a> |
   <a href="docs/TROUBLESHOOTING.md">Troubleshooting</a> |
   <a href="docs/METRICS.md">Live metrics</a> |
