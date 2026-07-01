@@ -23,6 +23,7 @@ function encodeResolvePayload(candidate: SourceCandidate): string {
 }
 
 function sourceLabel(candidate: SourceCandidate): string {
+  if (candidate.sourceService === "torbox") return "TorBox";
   if (candidate.origin === "deepbrid-official") return "Deepbrid Official";
   if (candidate.origin === "deepbrid-usenet-finder") return "Deepbrid Usenet";
   if (candidate.origin === "easynews-direct") return "Easynews Direct";
@@ -75,6 +76,8 @@ export function formatStreams(candidates: SourceCandidate[], baseUrl: string, to
         thirdLine += " ⚡ Ready";
       } else if (candidate.origin === "deepbrid-usenet-finder") {
         thirdLine += " Usenet";
+      } else if (candidate.sourceService === "torbox") {
+        thirdLine += " TorBox";
       } else if (candidate.origin === "easynews-direct") {
         thirdLine += " ✅ Direct CDN";
       } else if (candidate.origin === "stremio-addon-torrent") {

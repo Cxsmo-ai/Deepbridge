@@ -19,6 +19,7 @@ import { fetchNexusMiatrixNzb, getLastNexusMiatrixStats, getNexusMiatrixSources 
 import { getLastTorrentStats, getTorrentSources, normalizeTorrent } from "./deepbrid/torrents";
 import { getLibraryCatalog, getLibraryDirectStream, getLibraryMeta, isLibraryItemId, LibraryCatalogId, parseLibraryItemId } from "./deepbrid/libraryCatalog";
 import { getLastUpstreamAddonStats, getUpstreamAddonSources } from "./stremio/upstreamAddons";
+import { TorBoxClient, torBoxDataItems, TorBoxUsenetFile, TorBoxUsenetItem } from "./torbox/apiClient";
 import { decodeConfig } from "./core/configDecoder";
 import { dedupeCandidates } from "./core/releaseMatch";
 import { parseRelease } from "./core/parseRelease";
@@ -457,7 +458,7 @@ function fileSize(file: any): number {
 }
 
 function fileTitle(file: any): string {
-  return String(file.filename || file.name || file.subject || "");
+  return String(file.filename || file.name || file.short_name || file.subject || "");
 }
 
 function fileDownloadUrl(file: any): string | undefined {
@@ -473,7 +474,7 @@ function hasExplicitVideoFilename(file: any): boolean {
 }
 
 function hasVideoMimeType(file: any): boolean {
-  return /^video\//i.test(String(file?.type || file?.content_type || file?.mime || ""));
+  return /^video\//i.test(String(file?.type || file?.content_type || file?.mime || file?.mimetype || ""));
 }
 
 function hasStrongVideoEvidence(file: any): boolean {
@@ -482,7 +483,7 @@ function hasStrongVideoEvidence(file: any): boolean {
 
 function isAudioFile(file: any): boolean {
   const title = fileTitle(file);
-  const type = String(file?.type || file?.content_type || file?.mime || "");
+  const type = String(file?.type || file?.content_type || file?.mime || file?.mimetype || "");
   return /\.(mp3|m4a|flac|aac|ogg|opus|wav|wma|alac)$/i.test(title) || /^audio\//i.test(type);
 }
 
@@ -560,6 +561,43 @@ function selectPlayableFile(files: any[], payload: ResolvePayload): any {
   if (likelyEpisodeFiles.length === 1) return likelyEpisodeFiles[0];
 
   return undefined;
+}
+
+function selectTorBoxPlayableFile(files: TorBoxUsenetFile[], payload: ResolvePayload): TorBoxUsenetFile | undefined {
+  const playableFiles = files
+    .filter(file => file.id !== undefined && file.id !== null)
+    .filter(file => isVideoFile(file))
+    .filter(file => hasStrongVideoEvidence(file))
+    .filter(file => !isAudioFile(file));
+  if (playableFiles.length === 0) return undefined;
+
+  if (payload.episode) {
+    const exact = playableFiles.find(file => {
+      const parsed = parseRelease(fileTitle(file));
+      return parsed.season === payload.season && parsed.episode === payload.episode;
+    });
+    if (exact) return exact;
+
+    const range = playableFiles.find(file => {
+      const parsed = parseRelease(fileTitle(file));
+      return parsed.season === payload.season
+        && Boolean(parsed.episodeRange)
+        && parsed.episodeRange!.start <= payload.episode!
+        && parsed.episodeRange!.end >= payload.episode!;
+    });
+    if (range) return range;
+
+    const absolute = playableFiles.find(file => parseRelease(fileTitle(file)).absoluteEpisode === payload.episode);
+    if (absolute) return absolute;
+
+    if (payload.seasonPack) {
+      return playableFiles.reduce((prev, current) => fileSize(prev) > fileSize(current) ? prev : current);
+    }
+
+    return undefined;
+  }
+
+  return playableFiles.reduce((prev, current) => fileSize(prev) > fileSize(current) ? prev : current);
 }
 
 function selectTorrentLink(links: string[]): string | undefined {
@@ -645,6 +683,127 @@ async function resolvePreparedNzbToPlayableUrl(client: DeepbridClient, payload: 
     ? await prepareNzbUrlForDeepbrid(payload, userConfig, requestBaseUrl)
     : payload;
   return resolveNzbToPlayableUrl(client, preparedPayload, addTimeoutMs);
+}
+
+function torBoxApiKey(userConfig?: any): string {
+  return String(userConfig?.torboxApiKey || process.env.TORBOX_API_KEY || "").trim();
+}
+
+function torBoxEnabled(userConfig?: any): boolean {
+  return userConfig?.torboxEnabled === true && Boolean(torBoxApiKey(userConfig));
+}
+
+function torBoxItemReady(item: TorBoxUsenetItem): boolean {
+  const state = String(item.download_state || "").toLowerCase();
+  return Boolean(
+    item.download_finished
+    || item.download_present
+    || item.cached
+    || state === "completed"
+    || state === "cached"
+  );
+}
+
+function torBoxItemId(item: TorBoxUsenetItem): string | undefined {
+  const id = item.id ?? item.usenet_id;
+  return id === undefined || id === null ? undefined : String(id);
+}
+
+function torBoxAddErrorMessage(addData: any): string {
+  return String(
+    addData?.detail
+    || addData?.error
+    || addData?.message
+    || "TorBox failed to add or resolve the NZB."
+  );
+}
+
+function torBoxAddErrorCategory(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error || "unknown");
+  if (/cache|cached|not.*found/i.test(message)) return "not_cached";
+  if (/timeout|aborted/i.test(message)) return "timeout";
+  if (/auth|token|credential|401|403/i.test(message)) return "auth";
+  if (/no playable/i.test(message)) return "no_playable_file";
+  return "torbox";
+}
+
+function findTorBoxItemByName(items: TorBoxUsenetItem[], title?: string): TorBoxUsenetItem | undefined {
+  if (!title) return undefined;
+  const wanted = title.toLowerCase();
+  return items.find(item => String(item.name || "").toLowerCase() === wanted)
+    || items.find(item => String(item.name || "").toLowerCase().includes(wanted.slice(0, 80)));
+}
+
+async function waitForTorBoxItem(client: TorBoxClient, itemId: string | undefined, payload: ResolvePayload, userConfig?: any): Promise<TorBoxUsenetItem> {
+  const defaultPollTimeout = userConfig?.torboxPrecacheUncached === true ? 45000 : 18000;
+  const timeoutMs = Math.max(1000, Number(userConfig?.torboxPollTimeout || process.env.TORBOX_POLL_TIMEOUT || defaultPollTimeout) || defaultPollTimeout);
+  const intervalMs = Math.max(750, Number(userConfig?.torboxPollInterval || process.env.TORBOX_POLL_INTERVAL || 2500) || 2500);
+  const startedAt = Date.now();
+  let lastItem: TorBoxUsenetItem | undefined;
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const data = await client.getUsenetList(itemId, Math.min(12000, Math.max(3000, intervalMs + 2500)));
+    const items = torBoxDataItems(data);
+    lastItem = itemId ? items[0] : findTorBoxItemByName(items, payload.title);
+    if (lastItem && torBoxItemReady(lastItem) && Array.isArray(lastItem.files) && lastItem.files.length > 0) {
+      return lastItem;
+    }
+    await new Promise(resolve => setTimeout(resolve, intervalMs));
+  }
+
+  throw new Error(`torbox_timeout:${lastItem?.download_state || "unknown"}`);
+}
+
+async function resolveNzbToTorBoxPlayableUrl(payload: ResolvePayload, userConfig?: any, requestBaseUrl?: string): Promise<string> {
+  const apiKey = torBoxApiKey(userConfig);
+  if (!apiKey) throw new Error("torbox_missing_api_key");
+
+  const client = new TorBoxClient(apiKey);
+  const preparedPayload = requestBaseUrl
+    ? await prepareNzbUrlForDeepbrid(payload, userConfig, requestBaseUrl)
+    : payload;
+  const configuredTimeout = Number(userConfig?.torboxTimeout || process.env.TORBOX_TIMEOUT || 45000) || 45000;
+  const addData = await client.createUsenetDownloadFromLink({
+    link: preparedPayload.nzbUrl,
+    name: preparedPayload.title,
+    cacheOnly: false,
+    timeoutMs: configuredTimeout
+  }) as any;
+
+  if (addData?.success === false) {
+    throw new Error(torBoxAddErrorMessage(addData));
+  }
+
+  const dataItems = torBoxDataItems(addData);
+  const firstItem = dataItems[0];
+  const itemId = torBoxItemId(firstItem || {});
+  const item = firstItem && torBoxItemReady(firstItem) && Array.isArray(firstItem.files) && firstItem.files.length > 0
+    ? firstItem
+    : await waitForTorBoxItem(client, itemId, preparedPayload, userConfig);
+
+  const playableFile = selectTorBoxPlayableFile(item.files || [], preparedPayload);
+  if (!playableFile?.id) {
+    throw new Error("No playable video file found in this TorBox NZB.");
+  }
+  const usenetId = torBoxItemId(item);
+  if (!usenetId) throw new Error("torbox_missing_usenet_id");
+  return client.requestDownloadPermalink(usenetId, playableFile.id);
+}
+
+async function resolvePreparedCandidateToPlayableUrl(client: DeepbridClient, candidate: SourceCandidate, payload: ResolvePayload, addTimeoutMs = 25000, userConfig?: any, requestBaseUrl?: string): Promise<{ url: string; service: "deepbrid" | "torbox" }> {
+  const attempts: Array<Promise<{ url: string; service: "deepbrid" | "torbox" }>> = [
+    resolvePreparedNzbToPlayableUrl(client, payload, addTimeoutMs, userConfig, requestBaseUrl)
+      .then(url => ({ url, service: "deepbrid" as const }))
+  ];
+
+  if (torBoxEnabled(userConfig) && candidate.origin !== "deepbrid-usenet-finder") {
+    attempts.push(
+      resolveNzbToTorBoxPlayableUrl(payload, userConfig, requestBaseUrl)
+        .then(url => ({ url, service: "torbox" as const }))
+    );
+  }
+
+  return Promise.any(attempts);
 }
 
 function candidateToResolvePayload(candidate: SourceCandidate): ResolvePayload | null {
@@ -802,7 +961,8 @@ async function pregrabExternalCandidates(client: DeepbridClient, candidates: Sou
       try {
         stats.attempted++;
         sourceStats(candidate).attempted++;
-        const playableUrl = await resolvePreparedNzbToPlayableUrl(client, payload, addTimeoutFor(candidate), userConfig, requestBaseUrl);
+        const resolved = await resolvePreparedCandidateToPlayableUrl(client, candidate, payload, addTimeoutFor(candidate), userConfig, requestBaseUrl);
+        const playableUrl = resolved.url;
         if (isArchiveUrl(playableUrl)) {
           stats.skippedArchives++;
           sourceStats(candidate).skipped++;
@@ -813,12 +973,19 @@ async function pregrabExternalCandidates(client: DeepbridClient, candidates: Sou
           ...candidate,
           status: "ready",
           playableUrl,
+          sourceService: resolved.service,
           score: candidate.score + 5000
         });
         stats.ready++;
         sourceStats(candidate).ready++;
       } catch (error) {
-        const failureCategory = deepbridAddErrorCategory(error);
+        const failureCategory = error instanceof AggregateError
+          ? error.errors.map((err: unknown) => {
+              const deepbridCategory = deepbridAddErrorCategory(err);
+              const torboxCategory = torBoxAddErrorCategory(err);
+              return torboxCategory !== "torbox" ? `torbox_${torboxCategory}` : deepbridCategory;
+            }).join("+")
+          : deepbridAddErrorCategory(error);
         if (failureCategory === "archive_parts") {
           stats.skippedArchives++;
           const source = sourceStats(candidate);
@@ -1111,6 +1278,9 @@ app.get("/:token/health", async (request) => {
       newshostingDirectEnabled: Boolean(userConfig?.newshostingEnabled !== false && userConfig?.newshostingUsername && userConfig?.newshostingPassword),
       nexusMiatrixConfigured: Boolean((userConfig?.nexusMiatrixCookie || process.env.NEXUS_MIATRIX_COOKIE) || ((userConfig?.nexusMiatrixEmail || process.env.NEXUS_MIATRIX_EMAIL) && (userConfig?.nexusMiatrixPassword || process.env.NEXUS_MIATRIX_PASSWORD))),
       nexusMiatrixEnabled: Boolean(userConfig?.nexusMiatrixEnabled !== false && ((userConfig?.nexusMiatrixCookie || process.env.NEXUS_MIATRIX_COOKIE) || ((userConfig?.nexusMiatrixEmail || process.env.NEXUS_MIATRIX_EMAIL) && (userConfig?.nexusMiatrixPassword || process.env.NEXUS_MIATRIX_PASSWORD)))),
+      torboxConfigured: Boolean(torBoxApiKey(userConfig)),
+      torboxEnabled: torBoxEnabled(userConfig),
+      torboxPrecacheUncached: userConfig?.torboxPrecacheUncached === true,
       deepbridUsenetFinderConfigured: Boolean(userConfig?.deepbridWebCookie || process.env.DEEPBRID_WEB_COOKIE),
       deepbridUsenetFinderEnabled: Boolean(userConfig?.deepbridUsenetFinderEnabled !== false && (userConfig?.deepbridWebCookie || process.env.DEEPBRID_WEB_COOKIE)),
       deepbridLibraryEnabled: Boolean(userConfig?.deepbridLibraryEnabled !== false),

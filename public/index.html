@@ -373,6 +373,40 @@
     </div>
 
     <div style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; margin-bottom: 30px;">
+      <label style="font-size: 0.95rem; color: var(--text); margin-bottom: 10px; display: block;">TorBox External Usenet Resolver</label>
+      <div class="form-group" style="margin-bottom: 15px;">
+        <label>Enable TorBox for External Indexers</label>
+        <select id="torboxEnabled">
+          <option value="false" selected>Disabled</option>
+          <option value="true">Enabled: race TorBox against Deepbrid</option>
+        </select>
+        <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 5px;">When enabled, AltHub/Newznab/Prowlarr NZBs can resolve through TorBox or Deepbrid. Whichever service returns a playable direct link first wins.</p>
+      </div>
+      <div class="form-group" style="margin-bottom: 15px;">
+        <label>TorBox API Key</label>
+        <input type="password" id="torboxApiKey" placeholder="Optional TorBox API key">
+      </div>
+      <div class="form-group" style="margin-bottom: 15px;">
+        <label>TorBox Precache Mode</label>
+        <select id="torboxPrecacheUncached">
+          <option value="false" selected>Cache-only wait: wait for TorBox cached files, skip if not ready</option>
+          <option value="true">Longer precache wait: add to TorBox and wait longer when missing</option>
+        </select>
+        <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 5px;">Deepbridge submits the NZB to TorBox, waits for cached/finished playable files, and skips only that NZB if it does not become ready. Playback uses TorBox requestdl links directly, not this server.</p>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div class="form-group" style="margin-bottom: 0;">
+          <label>TorBox Add Timeout (ms)</label>
+          <input type="number" id="torboxTimeout" value="45000" min="1000" max="120000" step="500" style="padding: 8px; font-size: 0.9rem;">
+        </div>
+        <div class="form-group" style="margin-bottom: 0;">
+          <label>TorBox Poll Timeout (ms)</label>
+          <input type="number" id="torboxPollTimeout" value="18000" min="1000" max="120000" step="500" style="padding: 8px; font-size: 0.9rem;">
+        </div>
+      </div>
+    </div>
+
+    <div style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; margin-bottom: 30px;">
       <label style="font-size: 0.95rem; color: var(--text); margin-bottom: 10px; display: block;">Deepbrid Usenet Finder Source</label>
       <div class="form-group" style="margin-bottom: 15px;">
         <label>Enable Deepbrid Usenet Finder</label>
@@ -820,6 +854,11 @@
       deepbridFinderBridgeSecret: browserBridgeEnabled ? bridgeRandom() : '',
       deepbridUsenetFinderMaxResults: Math.min(Math.max(parseInt(document.getElementById('deepbridUsenetFinderMaxResults').value, 10) || 4, 1), 10),
       deepbridUsenetFinderMaxProcess: Math.min(Math.max(parseInt(document.getElementById('deepbridUsenetFinderMaxProcess').value, 10) || 5, 1), 12),
+      torboxEnabled: document.getElementById('torboxEnabled').value === 'true',
+      torboxApiKey: document.getElementById('torboxApiKey').value.trim(),
+      torboxPrecacheUncached: document.getElementById('torboxPrecacheUncached').value === 'true',
+      torboxTimeout: Math.min(Math.max(parseInt(document.getElementById('torboxTimeout').value, 10) || 45000, 1000), 120000),
+      torboxPollTimeout: Math.min(Math.max(parseInt(document.getElementById('torboxPollTimeout').value, 10) || 18000, 1000), 120000),
       easynewsEnabled: document.getElementById('easynewsEnabled').value === 'true',
       easynewsUsername: document.getElementById('easynewsUsername').value.trim(),
       easynewsPassword: document.getElementById('easynewsPassword').value,

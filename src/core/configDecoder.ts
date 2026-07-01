@@ -53,6 +53,12 @@ export interface UserConfig {
   deepbridLibraryEnabled?: boolean;
   deepbridLibraryCatalogsEnabled?: boolean;
   deepbridLibraryCatalogTimeout?: number;
+  torboxEnabled?: boolean;
+  torboxApiKey?: string;
+  torboxPrecacheUncached?: boolean;
+  torboxTimeout?: number;
+  torboxPollTimeout?: number;
+  torboxPollInterval?: number;
   torrentLibraryTimeout?: number;
   torrentInfoTimeout?: number;
   torrentAddTimeout?: number;

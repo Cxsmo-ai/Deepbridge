@@ -38,7 +38,7 @@ export type SourceCandidate = {
   nzbUrl?: string;
   nzbFileId?: string;
   originalIndexerUrl?: string;
-  sourceService?: "deepbrid" | "easynews";
+  sourceService?: "deepbrid" | "easynews" | "torbox";
 
   resolution?: "2160p" | "1080p" | "720p" | "480p" | "unknown";
   quality?: "REMUX" | "BluRay" | "WEB-DL" | "WEBRip" | "HDTV" | "unknown";

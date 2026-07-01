@@ -73,7 +73,33 @@ The dashboard supports two external result modes:
 - `direct` - recommended default. Deepbridge attempts more external candidates through Deepbrid and only shows streams after Deepbrid returns a direct playable URL.
 - `prechecked` - stricter/faster mode. Deepbridge attempts fewer external candidates and only shows streams confirmed playable during the stream request.
 
-Both modes avoid unresolved proxy-style Stremio entries. External results shown in Stremio are direct Deepbrid/myfast playback URLs.
+Both modes avoid unresolved proxy-style Stremio entries. External results shown in Stremio are direct Deepbrid/myfast playback URLs, or direct TorBox `requestdl` URLs when TorBox wins the external resolver race.
+
+## TorBox external NZB resolving
+
+TorBox can be enabled for external Newznab, AltHub, Prowlarr, and NZBHydra-style results. Deepbridge keeps the normal indexer search flow, then races Deepbrid and TorBox during pregrab. The first service that returns a playable direct URL wins.
+
+TorBox wait modes:
+
+- `Cache-only wait` submits the NZB to TorBox, waits for cached/finished playable files, and skips that specific NZB if it does not become ready.
+- `Longer precache wait` uses the same no-proxy TorBox add flow with a longer wait window for NZBs that need TorBox processing time.
+
+TorBox streams are not proxied through Deepbridge. Deepbridge returns TorBox `requestdl` URLs directly, and TorBox redirects the player to its CDN at playback time.
+
+Per-user dashboard settings:
+
+- `torboxEnabled`
+- `torboxApiKey`
+- `torboxPrecacheUncached`
+- `torboxTimeout`
+- `torboxPollTimeout`
+
+Server-level fallback settings:
+
+- `TORBOX_API_KEY`
+- `TORBOX_TIMEOUT`
+- `TORBOX_POLL_TIMEOUT`
+- `TORBOX_POLL_INTERVAL`
 
 ## Result limits
 

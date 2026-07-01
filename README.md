@@ -62,7 +62,7 @@ docker run --rm \
 
 ## What is Deepbridge?
 
-Deepbridge is a self-hosted Stremio addon that bridges Stremio, Deepbrid, built-in Easynews, built-in Newshosting, Nexus/Miatrix website search, and optional Newznab-compatible Usenet indexers. It combines Deepbrid official streams, native Easynews/Newshosting/Nexus results, and external indexer NZBs resolved through Deepbrid, then presents clean, ranked Stremio stream cards.
+Deepbridge is a self-hosted Stremio addon that bridges Stremio, Deepbrid, TorBox, built-in Easynews, built-in Newshosting, Nexus/Miatrix website search, and optional Newznab-compatible Usenet indexers. It combines Deepbrid official streams, native Easynews/Newshosting/Nexus results, and external indexer NZBs resolved through Deepbrid or TorBox, then presents clean, ranked Stremio stream cards.
 
 Deepbridge is built for people who want a simple addon URL, a clean configuration page, Docker-friendly deployment, and direct playback links from Deepbrid/myfast rather than proxying large video traffic through the addon server.
 
@@ -81,8 +81,9 @@ Deepbridge is built for people who want a simple addon URL, a clean configuratio
 - External magnet support that adds to Deepbrid on demand.
 - Direct-links-only mode hides unresolved addon proxy links by default.
 - Optional external Usenet indexer support.
-- Direct external result mode: pre-adds/prechecks more indexer NZBs through Deepbrid before showing them.
-- External pregrab: indexer NZBs are submitted to Deepbrid before being shown as direct playback links.
+- Optional TorBox resolver for external Newznab/AltHub/Prowlarr NZBs.
+- Direct external result mode: pre-adds/prechecks more indexer NZBs through Deepbrid and optional TorBox before showing them.
+- External pregrab: indexer NZBs are submitted to Deepbrid/TorBox before being shown as direct playback links.
 - Broken external results are hidden when Deepbrid cannot expose a video file.
 - Archive/RAR results are filtered from external results.
 - Direct final playback URLs; the addon does not proxy video by default.
@@ -130,7 +131,14 @@ Easynews behavior:
 - Stremio receives ready streams, not unresolved Easynews addon links.
 - Stream cards are labeled `Easynews Direct` when playback uses Easynews directly.
 
-External Newznab/Prowlarr/AltHub-style indexers are still fully supported and remain Deepbrid-resolved sources. They are configured separately in the `External Indexers` dashboard section.
+External Newznab/Prowlarr/AltHub-style indexers are fully supported. By default they resolve through Deepbrid. If TorBox is enabled in the dashboard, Deepbridge races Deepbrid and TorBox for selected external NZBs and uses whichever service returns a playable direct link first.
+
+TorBox has two wait modes:
+
+- `Cache-only wait` submits the NZB to TorBox, waits for cached/finished playable files, and skips that specific NZB if it does not become ready.
+- `Longer precache wait` uses the same no-proxy TorBox add flow with a longer wait window for NZBs that need TorBox processing time.
+
+TorBox playback is not proxied by Deepbridge. Stream cards point directly at TorBox's `requestdl` endpoint, which redirects to TorBox CDN at playback time.
 
 ## Built-in Newshosting support
 
@@ -212,7 +220,7 @@ Deepbridge supports two external Newznab/AltHub result modes from the dashboard:
 - `Direct Deepbrid links` - recommended. Attempts more AltHub/Newznab candidates through Deepbrid and only shows streams after Deepbrid returns a direct playable URL.
 - `Strict prechecked` - faster/stricter. Attempts fewer candidates and only shows streams confirmed playable during the stream request.
 
-Both modes avoid exposing unresolved addon proxy links in Stremio results. External streams shown in Stremio are direct Deepbrid/myfast playback URLs. These modes apply to external indexers and built-in Newshosting; the built-in Easynews source has its own dashboard credentials and direct Easynews resolution path.
+Both modes avoid exposing unresolved addon proxy links in Stremio results. External streams shown in Stremio are direct Deepbrid/myfast playback URLs or direct TorBox `requestdl` URLs when TorBox wins the resolver race. These modes apply to external indexers and built-in Newshosting; the built-in Easynews source has its own dashboard credentials and direct Easynews resolution path.
 
 ## Health checks
 
@@ -339,6 +347,9 @@ Core environment variables:
 | `NODE_ENV` | No | Set to `production` in hosted deployments. |
 | `DEEPBRID_OFFICIAL_TIMEOUT` | No | Timeout (ms) for official Deepbrid streams. Default `4500`. |
 | `DEEPBRID_RESOLVE_TIMEOUT` | No | Timeout (ms) for resolving NZB links via Deepbrid (direct mode). Default `4500`. |
+| `TORBOX_API_KEY` | No | Optional fallback TorBox API key for external NZB resolving. Per-user dashboard keys override this. |
+| `TORBOX_TIMEOUT` | No | Timeout (ms) for TorBox add/cache requests. Default `45000`. |
+| `TORBOX_POLL_TIMEOUT` | No | Timeout (ms) for polling TorBox after precache add. Default `18000`. |
 | `DEEPBRID_RESOLVE_TIMEOUT_PRECHECKED` | No | Timeout (ms) for resolving NZB links (prechecked mode). Default `7000`. |
 | `DEEPBRID_INDEXER_TIMEOUT` | No | Timeout (ms) for Newznab/NZBHydra indexer searches. Default `12000`. |
 | `DEEPBRID_INDEXER_TIMEOUT_EASYNEWS` | No | Timeout (ms) for Easynews indexer searches. Default `45000`. |
