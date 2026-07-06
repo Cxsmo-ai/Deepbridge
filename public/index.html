@@ -686,7 +686,7 @@
     <div style="margin-top: 30px; margin-bottom: 10px; border-bottom: 1px solid var(--panel-border); padding-bottom: 10px;">
       <label style="font-size: 1.1rem; color: var(--text);">External Indexers</label>
     </div>
-    <p class="indexer-help">Optional. Add Newznab-compatible indexers if you want extra Deepbrid-resolved sources. Easynews and Newshosting are built into Deepbridge above and do not need to be added here.</p>
+    <p class="indexer-help">Optional. Add Newznab-compatible indexers or Miatrix API V2 if you want extra Deepbrid-resolved sources. Easynews and Newshosting are built into Deepbridge above and do not need to be added here.</p>
 
     <div id="indexerContainer" class="indexer-list">
       <!-- Indexers will be dynamically added here -->
@@ -764,6 +764,7 @@
     { id: 'nzbplanet', name: 'NZBPlanet', apiUrl: 'https://api.nzbplanet.net', keyUrl: 'https://nzbplanet.net/profile', note: 'Use the API key from your NZBPlanet profile.' },
     { id: 'nzbfinder', name: 'NZBFinder', apiUrl: 'https://nzbfinder.ws', keyUrl: 'https://nzbfinder.ws/profile', note: 'Use your NZBFinder API key. If your account shows a different API host, paste it manually.' },
     { id: 'ninjacentral', name: 'NinjaCentral', apiUrl: 'https://ninjacentral.co.za', keyUrl: 'https://ninjacentral.co.za/profile', note: 'Use the API key from your NinjaCentral account.' },
+    { id: 'miatrix-v2', name: 'Miatrix API V2', apiUrl: 'https://nexus.miatrix.com/api/v2', keyUrl: 'https://nexus.miatrix.com', note: 'Use your Miatrix API V2 token. This is separate from the built-in website login source.' },
     { id: 'prowlarr', name: 'Prowlarr / Local Proxy', apiUrl: '', keyUrl: 'https://wiki.servarr.com/prowlarr/settings', note: 'Enter your reachable Prowlarr Newznab base URL and API key from Settings.' },
     { id: 'custom', name: 'Custom Newznab', apiUrl: '', keyUrl: '', note: 'Use any Newznab-compatible API base URL and API key.' }
   ];
@@ -776,10 +777,10 @@
     return INDEXER_PRESETS.find(preset => preset.id === id) || INDEXER_PRESETS[INDEXER_PRESETS.length - 1];
   }
 
-  function addIndexer(name = '', url = '', key = '') {
+  function addIndexer(name = '', url = '', key = '', type = '', fallbackOnly = false, fallbackMaxResults = 4) {
     indexerCount++;
     const id = `indexer-${indexerCount}`;
-    const presetId = INDEXER_PRESETS.find(preset => preset.apiUrl && preset.apiUrl === url)?.id || (url ? 'custom' : 'althub');
+    const presetId = type || INDEXER_PRESETS.find(preset => preset.apiUrl && preset.apiUrl === url)?.id || (url ? 'custom' : 'althub');
     const preset = findPreset(presetId);
     
     const html = `
@@ -794,6 +795,7 @@
             <select class="idx-preset" onchange="applyIndexerPreset('${id}', this.value)">
               ${presetOptions()}
             </select>
+            <input type="hidden" class="idx-type" value="${preset.id === 'custom' ? '' : preset.id}">
           </div>
           <a class="preset-link idx-key-link" href="${preset.keyUrl || '#'}" target="_blank" rel="noopener noreferrer" style="${preset.keyUrl ? '' : 'display:none;'}">Get API Key</a>
         </div>
@@ -809,6 +811,19 @@
         <div class="form-group">
           <label>API Key</label>
           <input type="password" class="idx-key" placeholder="Paste your Indexer API Key" value="${key}" required>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 120px; gap: 10px;">
+          <div class="form-group">
+            <label>Use Mode</label>
+            <select class="idx-fallback-only">
+              <option value="false" ${fallbackOnly ? '' : 'selected'}>Normal source</option>
+              <option value="true" ${fallbackOnly ? 'selected' : ''}>Fallback only when low</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Fallback Cap</label>
+            <input type="number" class="idx-fallback-max" min="1" max="12" step="1" value="${fallbackMaxResults || 4}" style="padding: 8px; font-size: 0.9rem;">
+          </div>
         </div>
         <div style="background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px; margin-top: 10px;">
           <label style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px; display: block;">Indexer Resolution Limits</label>
@@ -836,6 +851,7 @@
     
     document.getElementById('indexerContainer').insertAdjacentHTML('beforeend', html);
     document.getElementById(id).querySelector('.idx-preset').value = presetId;
+    document.getElementById(id).querySelector('.idx-type').value = preset.id === 'custom' ? '' : preset.id;
   }
 
   function removeIndexer(id) {
@@ -858,6 +874,7 @@
     } else if (presetId !== 'custom') {
       urlInput.value = '';
     }
+    item.querySelector('.idx-type').value = presetId === 'custom' ? '' : presetId;
     if (preset.keyUrl) {
       link.href = preset.keyUrl;
       link.style.display = 'inline-flex';
@@ -921,6 +938,9 @@
       const name = item.querySelector('.idx-name').value.trim();
       const url = item.querySelector('.idx-url').value.trim();
       const key = item.querySelector('.idx-key').value.trim();
+      const type = item.querySelector('.idx-type')?.value.trim() || '';
+      const fallbackOnly = item.querySelector('.idx-fallback-only')?.value === 'true';
+      const fallbackMaxResults = Math.min(Math.max(parseInt(item.querySelector('.idx-fallback-max')?.value, 10) || 4, 1), 12);
 
       if (requireComplete && (!url || !key)) {
         throw new Error('Please ensure all Indexer API URLs and Keys are filled out.');
@@ -931,6 +951,9 @@
         name,
         url,
         key,
+        type,
+        fallbackOnly,
+        fallbackMaxResults,
         limits: {
           "2160p": getLimitVal(item.querySelector('.idx-l4k').value),
           "1080p": getLimitVal(item.querySelector('.idx-l1080').value),
@@ -1103,7 +1126,7 @@
     indexerCount = 0;
     const indexers = Array.isArray(config.indexers) ? config.indexers : [];
     indexers.forEach(indexer => {
-      addIndexer(indexer.name || '', indexer.url || '', indexer.key || '');
+      addIndexer(indexer.name || '', indexer.url || '', indexer.key || '', indexer.type || '', indexer.fallbackOnly === true, indexer.fallbackMaxResults || 4);
       const item = indexerContainer.lastElementChild;
       const itemLimits = indexer.limits || {};
       item.querySelector('.idx-l4k').value = itemLimits["2160p"] ?? 'all';

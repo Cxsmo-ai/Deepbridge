@@ -7,6 +7,7 @@ import { nanoid } from "nanoid";
 import { request } from "undici";
 
 const NEWZNAB_ATTRS = "files,usenetdate,group,language,resolution,season,episode,imdb,grabs,password,size";
+const MIATRIX_V2_TYPE = "miatrix-v2";
 
 function compact<T>(values: Array<T | undefined | null | false | "">): T[] {
   return values.filter(Boolean) as T[];
@@ -36,6 +37,10 @@ type IndexerSearchStats = {
   }>;
 };
 
+type IndexerSourceOptions = {
+  fallbackMode?: boolean;
+};
+
 let lastIndexerSearchStats: IndexerSearchStats = {
   startedAt: "",
   finishedAt: "",
@@ -61,6 +66,12 @@ function isEasynewsIndexer(indexer: any): boolean {
   const name = String(indexer?.name || "").toLowerCase();
   const url = String(indexer?.base_url || indexer?.url || "").toLowerCase();
   return name.includes("easynews") || url.includes("easynews");
+}
+
+function isMiatrixV2Indexer(indexer: any): boolean {
+  const type = String(indexer?.type || "").toLowerCase();
+  const url = String(indexer?.base_url || indexer?.url || "").toLowerCase();
+  return type === MIATRIX_V2_TYPE || type === "nexus-v2" || type === "api-v2" || url.includes("nexus.miatrix.com/api/v2");
 }
 
 async function fetchMediaMetadata(media: MediaRequest): Promise<MediaMetadata> {
@@ -202,7 +213,60 @@ function buildNewznabUrl(baseUrl: string, params: Record<string, string | number
   return `${normalizeNewznabApiUrl(baseUrl)}?${search.toString()}`;
 }
 
+function normalizeMiatrixV2BaseUrl(rawBaseUrl: string): string {
+  const trimmed = String(rawBaseUrl || "").trim().replace(/\/+$/, "");
+  if (!trimmed) return "";
+  if (/\/api\/v2$/i.test(trimmed)) return trimmed;
+  if (/\/api\/v2\//i.test(trimmed)) return trimmed.replace(/\/api\/v2\/.*$/i, "/api/v2");
+  return `${trimmed}/api/v2`;
+}
+
+function buildMiatrixV2Url(baseUrl: string, endpoint: string, token: string, params: Record<string, string | number | undefined>): string {
+  const search = new URLSearchParams();
+  search.set("api_token", token);
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === "") continue;
+    search.set(key, String(value));
+  }
+  return `${normalizeMiatrixV2BaseUrl(baseUrl)}/${endpoint.replace(/^\/+/, "")}?${search.toString()}`;
+}
+
+function buildMiatrixV2SearchUrls(indexer: any, media: MediaRequest, metadata: MediaMetadata): string[] {
+  const urls: string[] = [];
+  const imdb = media.imdbId.startsWith("tt") ? media.imdbId : "";
+  const imdbNumeric = imdb.replace(/^tt/i, "");
+  const titles = buildQueryTitles(metadata).slice(0, 4);
+  const baseUrl = String(indexer.base_url || "").replace(/\/+$/, "");
+  const token = indexer.encrypted_api_key;
+  const category = media.type === "series" ? "5000" : "2000";
+
+  if (media.type === "series") {
+    if (imdbNumeric) {
+      urls.push(buildMiatrixV2Url(baseUrl, "tv", token, { imdbid: imdbNumeric, season: media.season, ep: media.episode }));
+      urls.push(buildMiatrixV2Url(baseUrl, "tv", token, { imdbid: imdbNumeric, season: media.season }));
+    }
+    for (const title of titles) {
+      urls.push(buildMiatrixV2Url(baseUrl, "tv", token, { id: title, season: media.season, ep: media.episode }));
+      urls.push(buildMiatrixV2Url(baseUrl, "tv", token, { id: title, season: media.season }));
+      urls.push(buildMiatrixV2Url(baseUrl, "search", token, { id: `${title} S${String(media.season || "").padStart(2, "0")}E${String(media.episode || "").padStart(2, "0")}`, cat: category }));
+    }
+  } else {
+    if (imdb) urls.push(buildMiatrixV2Url(baseUrl, "movies", token, { imdbid: imdb }));
+    if (imdbNumeric) urls.push(buildMiatrixV2Url(baseUrl, "movies", token, { imdbid: imdbNumeric }));
+    for (const title of titles) {
+      urls.push(buildMiatrixV2Url(baseUrl, "movies", token, { id: title }));
+      urls.push(buildMiatrixV2Url(baseUrl, "search", token, { id: metadata.year ? `${title} ${metadata.year}` : title, cat: category }));
+    }
+  }
+
+  return [...new Set(urls)].slice(0, 18);
+}
+
 function buildSearchUrls(indexer: any, media: MediaRequest, metadata: MediaMetadata): string[] {
+  if (isMiatrixV2Indexer(indexer)) {
+    return buildMiatrixV2SearchUrls(indexer, media, metadata);
+  }
+
   const urls: string[] = [];
   const easynewsMode = isEasynewsIndexer(indexer);
   const imdb = media.imdbId.startsWith("tt") ? media.imdbId.replace("tt", "") : "";
@@ -340,6 +404,46 @@ async function fetchNewznabItems(searchUrl: string, timeoutMs = 5000): Promise<a
   }
 }
 
+function asMiatrixV2Items(data: any): any[] {
+  return asArray(
+    data?.results
+    || data?.data
+    || data?.nzbs
+    || data?.items
+    || data?.releases
+    || data?.list
+    || data
+  );
+}
+
+function normalizeMiatrixV2Item(item: any, indexer: any): any {
+  const id = resolveFirst(item.id, item.ID, item.nzb_id, item.nzbId, item.guid, item.hash, item.releaseHash, item.nzbHash);
+  const title = resolveFirst(item.title, item.name, item.release_name, item.releaseName, item.subject);
+  const downloadUrl = resolveFirst(item.downloadUrl, item.download_url, item.getnzb, item.nzbUrl, item.nzb_url, item.link, item.url);
+  return {
+    ...item,
+    title,
+    size: resolveFirst(item.size, item.sizeBytes, item.size_bytes, item.filesize, item.bytes),
+    downloadUrl: downloadUrl || (id ? buildMiatrixV2Url(String(indexer.base_url || ""), "getnzb", indexer.encrypted_api_key, { id }) : undefined),
+    guid: id,
+    attr: [
+      { name: "size", value: resolveFirst(item.size, item.sizeBytes, item.size_bytes, item.filesize, item.bytes) },
+      { name: "grabs", value: resolveFirst(item.grabs, item.downloads) }
+    ].filter(attr => attr.value !== undefined && attr.value !== null)
+  };
+}
+
+async function fetchMiatrixV2Items(searchUrl: string, indexer: any, timeoutMs = 8000): Promise<any[]> {
+  const res = await request(searchUrl, {
+    headers: { "Accept": "application/json" },
+    signal: AbortSignal.timeout(timeoutMs)
+  });
+  const data = await res.body.json() as any;
+  return asMiatrixV2Items(data)
+    .map(item => normalizeMiatrixV2Item(item, indexer))
+    .filter(item => item.title && item.downloadUrl);
+}
+
 function newznabErrorCategory(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error || "unknown");
   if (/timeout|aborted|AbortError|UND_ERR_ABORTED/i.test(message)) return "timeout";
@@ -435,7 +539,8 @@ function getItemSize(item: any, attrs: Record<string, any>, parsedSizeBytes?: nu
 export async function getIndexerSources(
   deepbridClient: DeepbridClient,
   media: MediaRequest,
-  userConfig?: any
+  userConfig?: any,
+  options: IndexerSourceOptions = {}
 ): Promise<SourceCandidate[]> {
   const startedAt = Date.now();
   let indexers: any[] = [];
@@ -447,7 +552,9 @@ export async function getIndexerSources(
         base_url: idx.url,
         encrypted_api_key: idx.key,
         limits: idx.limits,
-        type: idx.type || "althub"
+        type: idx.type || "althub",
+        fallbackOnly: idx.fallbackOnly === true,
+        fallbackMaxResults: idx.fallbackMaxResults
       }));
     }
     
@@ -461,6 +568,8 @@ export async function getIndexerSources(
       }];
     }
   }
+
+  indexers = indexers.filter(indexer => options.fallbackMode ? indexer.fallbackOnly === true : indexer.fallbackOnly !== true);
 
   const stats: IndexerSearchStats = {
     startedAt: new Date(startedAt).toISOString(),
@@ -509,6 +618,7 @@ export async function getIndexerSources(
       const seenItems = new Set<string>();
       const searchUrls = buildSearchUrls(indexer, media, metadata);
       const easynewsMode = isEasynewsIndexer(indexer);
+      const miatrixV2Mode = isMiatrixV2Indexer(indexer);
       const userIndexerTimeout = userConfig?.indexerTimeout;
       const searchTimeoutMs = easynewsMode ? parseInt(process.env.DEEPBRID_INDEXER_TIMEOUT_EASYNEWS || "45000") : (userIndexerTimeout && Number.isFinite(userIndexerTimeout) && userIndexerTimeout > 0 ? userIndexerTimeout : parseInt(process.env.DEEPBRID_INDEXER_TIMEOUT || "12000"));
       indexerStats.plannedSearches = searchUrls.length;
@@ -523,7 +633,9 @@ export async function getIndexerSources(
         }
       } else {
         searchResults.push(...await Promise.allSettled(searchUrls.map(async (searchUrl) => {
-          return fetchNewznabItems(searchUrl, searchTimeoutMs);
+          return miatrixV2Mode
+            ? fetchMiatrixV2Items(searchUrl, indexer, searchTimeoutMs)
+            : fetchNewznabItems(searchUrl, searchTimeoutMs);
         })));
       }
 
@@ -595,6 +707,10 @@ export async function getIndexerSources(
         } else {
           topItems = topItems.concat(group.slice(0, Number(limit)));
         }
+      }
+      if (options.fallbackMode) {
+        const fallbackCap = Math.max(1, Math.min(Number(indexer.fallbackMaxResults || userConfig?.fallbackIndexerMaxResults || 4) || 4, 12));
+        topItems = topItems.slice(0, fallbackCap);
       }
       indexerStats.selectedItems = topItems.length;
 

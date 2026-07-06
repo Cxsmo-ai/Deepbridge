@@ -2,6 +2,9 @@ export interface IndexerConfig {
   name?: string;
   url: string;
   key: string;
+  type?: string;
+  fallbackOnly?: boolean;
+  fallbackMaxResults?: number;
   limits?: {
     "2160p": number | "all";
     "1080p": number | "all";

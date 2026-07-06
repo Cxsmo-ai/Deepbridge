@@ -906,6 +906,15 @@ function isAcceptableExternalCandidate(candidate: SourceCandidate): boolean {
   return candidate.matchScore >= externalMatchThreshold(candidate);
 }
 
+function fallbackTriggerCount(userConfig?: any): number {
+  const configured = Number(userConfig?.fallbackIndexerTriggerCount || process.env.DEEPBRIDGE_FALLBACK_INDEXER_TRIGGER_COUNT || 8) || 8;
+  return Math.max(1, Math.min(configured, 30));
+}
+
+function hasFallbackIndexers(userConfig?: any): boolean {
+  return Array.isArray(userConfig?.indexers) && userConfig.indexers.some((indexer: any) => indexer?.fallbackOnly === true);
+}
+
 function isEasynewsCandidate(candidate: SourceCandidate): boolean {
   return sourceKey(candidate).toLowerCase().includes("easynews");
 }
@@ -1290,17 +1299,41 @@ async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, 
       : indexerCandidates;
     const remainingBudgetMs = Math.max(1000, deadlineAt - Date.now() - 750);
     const readyIndexerCandidates = await pregrabExternalCandidates(client, pregrabCandidates, externalMode, userConfig, dynamicBaseUrl, remainingBudgetMs);
+    let fallbackReadyCandidates: SourceCandidate[] = [];
+    let fallbackRawCandidates = 0;
+    const primaryPlayableCount = [
+      ...officialCandidates,
+      ...finderCandidates,
+      ...readyIndexerCandidates,
+      ...easynewsDirectCandidates,
+      ...torrentCandidates,
+      ...upstreamAddonCandidates
+    ].filter(candidate => !directLinksOnly || Boolean(candidate.playableUrl)).length;
+    if (primaryPlayableCount < fallbackTriggerCount(userConfig) && hasFallbackIndexers(userConfig)) {
+      const fallbackSearchBudgetMs = Math.max(1000, Math.min(options.warm ? 15000 : 7000, deadlineAt - Date.now() - 3000));
+      if (fallbackSearchBudgetMs > 1000) {
+        const [fallbackResult] = await allSettledWithin([
+          getIndexerSources(client, media, userConfig, { fallbackMode: true })
+        ], fallbackSearchBudgetMs);
+        const fallbackCandidates = fallbackResult.status === "fulfilled" ? fallbackResult.value : [];
+        fallbackRawCandidates = fallbackCandidates.length;
+        const fallbackPregrabBudgetMs = Math.max(1000, deadlineAt - Date.now() - 750);
+        fallbackReadyCandidates = await pregrabExternalCandidates(client, fallbackCandidates, externalMode, userConfig, dynamicBaseUrl, fallbackPregrabBudgetMs);
+      }
+    }
     const externalCandidates = directLinksOnly
-      ? readyIndexerCandidates
+      ? [...readyIndexerCandidates, ...fallbackReadyCandidates]
       : externalMode === "direct"
       ? [
           ...indexerCandidates.filter(candidate => !isEasynewsCandidate(candidate)),
           ...newshostingCandidates,
           ...nexusCandidates,
-          ...readyIndexerCandidates
+          ...readyIndexerCandidates,
+          ...fallbackReadyCandidates
         ]
       : [
           ...readyIndexerCandidates,
+          ...fallbackReadyCandidates,
           ...newshostingCandidates,
           ...nexusCandidates
         ];
@@ -1338,6 +1371,8 @@ async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, 
       sourceTimeoutNames: [officialResult, finderResult, indexerResult, easynewsResult, newshostingResult, nexusResult, torrentResult, upstreamAddonResult]
         .map((result, index) => result.status === "timeout" ? sourceNames[index] : "")
         .filter(Boolean),
+      fallbackRawCandidates,
+      fallbackReadyCandidates: fallbackReadyCandidates.length,
       candidates: candidates.length,
       streams: streams.length
     });
