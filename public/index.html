@@ -260,6 +260,38 @@
       border-color: var(--primary);
     }
 
+    .backup-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .secondary-btn {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--panel-border);
+      color: var(--text);
+      box-shadow: none;
+      margin-top: 0;
+      font-size: 0.95rem;
+      padding: 12px;
+    }
+
+    .secondary-btn:hover {
+      background: rgba(255, 255, 255, 0.12);
+      border-color: var(--accent);
+      transform: translateY(-1px);
+      box-shadow: none;
+    }
+
+    .status-note {
+      min-height: 1.2em;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      line-height: 1.4;
+      margin-top: 12px;
+    }
+
     button {
       background: linear-gradient(135deg, #8e44ad, #9b59b6);
       color: white;
@@ -323,6 +355,12 @@
     }
     .fade-in { animation: fadeIn 0.4s ease forwards; }
 
+    @media (max-width: 620px) {
+      .backup-actions {
+        grid-template-columns: 1fr;
+      }
+    }
+
   </style>
 </head>
 <body>
@@ -347,6 +385,19 @@
       <label>Custom Base URL (Optional)</label>
       <input type="text" id="customBaseUrl" placeholder="e.g. https://deepbridge.your-paid-url.com" style="margin-bottom: 5px;">
       <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0;">Leave blank to auto-detect. Useful if you're configuring this behind a proxy but accessing it locally.</p>
+    </div>
+
+    <div style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; margin-bottom: 30px;">
+      <label style="font-size: 0.95rem; color: var(--text); margin-bottom: 10px; display: block;">Configuration Backup</label>
+      <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0; line-height: 1.5;">Save this dashboard configuration in your browser or download a private JSON backup. Backups include API keys and passwords, so keep them private.</p>
+      <div class="backup-actions">
+        <button type="button" class="secondary-btn" onclick="saveConfigToBrowser()">Save in Browser</button>
+        <button type="button" class="secondary-btn" onclick="loadConfigFromBrowser(true)">Load Saved</button>
+        <button type="button" class="secondary-btn" onclick="downloadConfigBackup()">Download Backup</button>
+        <button type="button" class="secondary-btn" onclick="document.getElementById('configImportFile').click()">Import Backup</button>
+      </div>
+      <input type="file" id="configImportFile" accept=".json,application/json" style="display:none;" onchange="importConfigBackup(this.files && this.files[0]); this.value = '';">
+      <div id="backupStatus" class="status-note"></div>
     </div>
 
     <div class="form-group" style="margin-bottom: 20px;">
@@ -613,6 +664,23 @@
           <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 4px;">Default: 12000</p>
         </div>
       </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 15px;">
+        <div class="form-group" style="margin-bottom: 0;">
+          <label style="font-size: 0.8rem;">Fast Resolve Window (ms)</label>
+          <input type="number" id="pregrabDeadlineMs" value="0" min="0" max="45000" step="500" placeholder="Default: auto" style="padding: 8px; font-size: 0.9rem;" title="Maximum time spent turning external results into playable direct links. Leave 0 for optimized defaults.">
+          <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 4px;">Default: auto</p>
+        </div>
+        <div class="form-group" style="margin-bottom: 0;">
+          <label style="font-size: 0.8rem;">Ready Links Target</label>
+          <input type="number" id="pregrabMaxReady" value="0" min="0" max="8" step="1" placeholder="Default: 3" style="padding: 8px; font-size: 0.9rem;" title="Stop early after this many playable external links are ready. Leave 0 for default.">
+          <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 4px;">Default: 3</p>
+        </div>
+        <div class="form-group" style="margin-bottom: 0;">
+          <label style="font-size: 0.8rem;">Resolve Concurrency</label>
+          <input type="number" id="pregrabConcurrency" value="0" min="0" max="6" step="1" placeholder="Default: 4" style="padding: 8px; font-size: 0.9rem;" title="How many external candidates to resolve at once. Leave 0 for default.">
+          <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 4px;">Default: 4</p>
+        </div>
+      </div>
     </div>
 
     <div style="margin-top: 30px; margin-bottom: 10px; border-bottom: 1px solid var(--panel-border); padding-bottom: 10px;">
@@ -800,21 +868,52 @@
     note.innerHTML = `<strong>${preset.name}:</strong> ${preset.note}`;
   }
 
-  function generate() {
-    const deepbridKey = document.getElementById('deepbridKey').value.trim();
-    if (!deepbridKey || /^(admin|your[_ -]?deepbrid[_ -]?api[_ -]?key|example)$/i.test(deepbridKey)) {
-      alert("Please provide your actual Deepbrid API Key. Placeholder values cannot access your My Library torrents.");
-      return;
+  const CONFIG_BACKUP_VERSION = 1;
+  const CONFIG_STORAGE_KEY = 'deepbridge.dashboard.config.v1';
+  let currentBridgeId = '';
+  let currentBridgeSecret = '';
+
+  function setBackupStatus(message) {
+    const status = document.getElementById('backupStatus');
+    if (status) status.innerText = message || '';
+  }
+
+  function getLimitVal(val) {
+    if (!val) return 'all';
+    val = String(val).trim().toLowerCase();
+    if (val === 'all' || val === '') return 'all';
+    const num = parseInt(val, 10);
+    return isNaN(num) ? 'all' : num;
+  }
+
+  function clampNumber(id, fallback, min, max) {
+    const value = parseInt(document.getElementById(id).value, 10);
+    const next = Number.isFinite(value) ? value : fallback;
+    return Math.min(Math.max(next, min), max);
+  }
+
+  function optionalNumber(id, min, max) {
+    const value = parseInt(document.getElementById(id).value, 10);
+    if (!Number.isFinite(value) || value <= 0) return 0;
+    return Math.min(Math.max(value, min), max);
+  }
+
+  function bridgeRandom() {
+    return Array.from(crypto.getRandomValues(new Uint8Array(24)), value => value.toString(16).padStart(2, '0')).join('');
+  }
+
+  function ensureBridgeIdentity(enabled) {
+    if (!enabled) {
+      return { id: '', secret: '' };
     }
+    if (!currentBridgeId || !currentBridgeSecret) {
+      currentBridgeId = crypto.randomUUID();
+      currentBridgeSecret = bridgeRandom();
+    }
+    return { id: currentBridgeId, secret: currentBridgeSecret };
+  }
 
-    const getLimitVal = (val) => {
-      if (!val) return 'all';
-      val = val.trim().toLowerCase();
-      if (val === 'all' || val === '') return 'all';
-      const num = parseInt(val);
-      return isNaN(num) ? 'all' : num;
-    };
-
+  function collectIndexers(requireComplete) {
     const indexerItems = document.querySelectorAll('.indexer-item');
     const indexers = [];
 
@@ -823,14 +922,14 @@
       const url = item.querySelector('.idx-url').value.trim();
       const key = item.querySelector('.idx-key').value.trim();
 
-      if (!url || !key) {
-        alert("Please ensure all Indexer API URLs and Keys are filled out.");
-        return;
+      if (requireComplete && (!url || !key)) {
+        throw new Error('Please ensure all Indexer API URLs and Keys are filled out.');
       }
+      if (!url && !key && !name) continue;
 
-      indexers.push({ 
-        name, 
-        url, 
+      indexers.push({
+        name,
+        url,
         key,
         limits: {
           "2160p": getLimitVal(item.querySelector('.idx-l4k').value),
@@ -841,28 +940,42 @@
       });
     }
 
+    return indexers;
+  }
+
+  function collectConfigFromForm(options = {}) {
+    const requireDeepbridKey = options.requireDeepbridKey === true;
+    const requireCompleteIndexers = options.requireCompleteIndexers === true;
+    const deepbridKey = document.getElementById('deepbridKey').value.trim();
+    if (requireDeepbridKey && (!deepbridKey || /^(admin|your[_ -]?deepbrid[_ -]?api[_ -]?key|example)$/i.test(deepbridKey))) {
+      throw new Error('Please provide your actual Deepbrid API Key. Placeholder values cannot access your My Library torrents.');
+    }
 
     const browserBridgeEnabled = document.getElementById('deepbridFinderBridgeEnabled').value === 'true';
-    const bridgeRandom = () => Array.from(crypto.getRandomValues(new Uint8Array(24)), value => value.toString(16).padStart(2, '0')).join('');
+    const bridge = ensureBridgeIdentity(browserBridgeEnabled);
+    const pregrabDeadlineMs = optionalNumber('pregrabDeadlineMs', 8000, 45000);
+    const pregrabMaxReady = optionalNumber('pregrabMaxReady', 1, 8);
+    const pregrabConcurrency = optionalNumber('pregrabConcurrency', 2, 6);
+
     const configObj = {
       deepbridApiKey: deepbridKey,
       externalResultMode: document.getElementById('externalResultMode').value,
       directLinksOnly: document.getElementById('directLinksOnly').value === 'true',
       deepbridUsenetFinderEnabled: document.getElementById('deepbridUsenetFinderEnabled').value === 'true',
       deepbridFinderBridgeEnabled: browserBridgeEnabled,
-      deepbridFinderBridgeId: browserBridgeEnabled ? crypto.randomUUID() : '',
-      deepbridFinderBridgeSecret: browserBridgeEnabled ? bridgeRandom() : '',
-      deepbridUsenetFinderMaxResults: Math.min(Math.max(parseInt(document.getElementById('deepbridUsenetFinderMaxResults').value, 10) || 4, 1), 10),
-      deepbridUsenetFinderMaxProcess: Math.min(Math.max(parseInt(document.getElementById('deepbridUsenetFinderMaxProcess').value, 10) || 5, 1), 12),
+      deepbridFinderBridgeId: bridge.id,
+      deepbridFinderBridgeSecret: bridge.secret,
+      deepbridUsenetFinderMaxResults: clampNumber('deepbridUsenetFinderMaxResults', 4, 1, 10),
+      deepbridUsenetFinderMaxProcess: clampNumber('deepbridUsenetFinderMaxProcess', 5, 1, 12),
       torboxEnabled: document.getElementById('torboxEnabled').value === 'true',
       torboxApiKey: document.getElementById('torboxApiKey').value.trim(),
       torboxPrecacheUncached: document.getElementById('torboxPrecacheUncached').value === 'true',
-      torboxTimeout: Math.min(Math.max(parseInt(document.getElementById('torboxTimeout').value, 10) || 45000, 1000), 120000),
-      torboxPollTimeout: Math.min(Math.max(parseInt(document.getElementById('torboxPollTimeout').value, 10) || 18000, 1000), 120000),
+      torboxTimeout: clampNumber('torboxTimeout', 45000, 1000, 120000),
+      torboxPollTimeout: clampNumber('torboxPollTimeout', 18000, 1000, 120000),
       easynewsEnabled: document.getElementById('easynewsEnabled').value === 'true',
       easynewsUsername: document.getElementById('easynewsUsername').value.trim(),
       easynewsPassword: document.getElementById('easynewsPassword').value,
-      easynewsMaxResults: Math.min(Math.max(parseInt(document.getElementById('easynewsMaxResults').value, 10) || 4, 1), 8),
+      easynewsMaxResults: clampNumber('easynewsMaxResults', 4, 1, 8),
       deepbridLibraryEnabled: document.getElementById('deepbridLibraryEnabled').value === 'true',
       deepbridLibraryCatalogsEnabled: document.getElementById('deepbridLibraryCatalogsEnabled').value === 'true',
       externalTorrentMagnets: document.getElementById('externalTorrentMagnets').value.trim(),
@@ -872,19 +985,19 @@
       newshostingPassword: document.getElementById('newshostingPassword').value,
       newshostingHost: document.getElementById('newshostingHost').value.trim() || 'srv.aboutusenet.com',
       newshostingIp: document.getElementById('newshostingIp').value.trim() || '81.171.93.8',
-      newshostingPort: parseInt(document.getElementById('newshostingPort').value, 10) || 5598,
-      newshostingMaxResults: Math.min(Math.max(parseInt(document.getElementById('newshostingMaxResults').value, 10) || 12, 1), 40),
-      newshostingMaxNzbFiles: Math.min(Math.max(parseInt(document.getElementById('newshostingMaxNzbFiles').value, 10) || 32, 1), 500),
+      newshostingPort: clampNumber('newshostingPort', 5598, 1, 65535),
+      newshostingMaxResults: clampNumber('newshostingMaxResults', 12, 1, 40),
+      newshostingMaxNzbFiles: clampNumber('newshostingMaxNzbFiles', 32, 1, 500),
       nexusMiatrixEnabled: document.getElementById('nexusMiatrixEnabled').value === 'true',
       nexusMiatrixCookie: document.getElementById('nexusMiatrixCookie').value.trim(),
       nexusMiatrixEmail: document.getElementById('nexusMiatrixEmail').value.trim(),
       nexusMiatrixPassword: document.getElementById('nexusMiatrixPassword').value,
-      nexusMiatrixMaxResults: Math.min(Math.max(parseInt(document.getElementById('nexusMiatrixMaxResults').value, 10) || 2, 1), 10),
-      nexusMiatrixSearchTimeout: Math.min(Math.max(parseInt(document.getElementById('nexusMiatrixSearchTimeout').value, 10) || 8000, 1000), 30000),
-      officialTimeout: parseInt(document.getElementById('officialTimeout').value, 10) || 0,
-      resolveTimeout: parseInt(document.getElementById('resolveTimeout').value, 10) || 0,
-      indexerTimeout: parseInt(document.getElementById('indexerTimeout').value, 10) || 0,
-      indexers: indexers,
+      nexusMiatrixMaxResults: clampNumber('nexusMiatrixMaxResults', 2, 1, 10),
+      nexusMiatrixSearchTimeout: clampNumber('nexusMiatrixSearchTimeout', 8000, 1000, 30000),
+      officialTimeout: optionalNumber('officialTimeout', 0, 120000),
+      resolveTimeout: optionalNumber('resolveTimeout', 0, 120000),
+      indexerTimeout: optionalNumber('indexerTimeout', 0, 120000),
+      indexers: collectIndexers(requireCompleteIndexers),
       limits: {
         "2160p": getLimitVal(document.getElementById('dbLimit2160p').value),
         "1080p": getLimitVal(document.getElementById('dbLimit1080p').value),
@@ -893,11 +1006,193 @@
       }
     };
 
+    if (pregrabDeadlineMs) configObj.pregrabDeadlineMs = pregrabDeadlineMs;
+    if (pregrabMaxReady) configObj.pregrabMaxReady = pregrabMaxReady;
+    if (pregrabConcurrency) configObj.pregrabConcurrency = pregrabConcurrency;
+
+    return configObj;
+  }
+
+  function buildBackupPayload() {
+    return {
+      version: CONFIG_BACKUP_VERSION,
+      type: 'deepbridge-dashboard-config',
+      containsSecrets: true,
+      exportedAt: new Date().toISOString(),
+      baseUrl: document.getElementById('customBaseUrl').value.trim(),
+      config: collectConfigFromForm()
+    };
+  }
+
+  function unwrapBackupPayload(payload) {
+    if (!payload || typeof payload !== 'object') {
+      throw new Error('Backup file is not valid JSON.');
+    }
+    const config = payload.config && typeof payload.config === 'object' ? payload.config : payload;
+    if (!config || typeof config !== 'object') {
+      throw new Error('Backup file does not contain a Deepbridge config.');
+    }
+    return {
+      baseUrl: typeof payload.baseUrl === 'string' ? payload.baseUrl : '',
+      config
+    };
+  }
+
+  function setValue(id, value) {
+    const el = document.getElementById(id);
+    if (el && value !== undefined && value !== null) el.value = value;
+  }
+
+  function setBool(id, value) {
+    if (value !== undefined && value !== null) setValue(id, value ? 'true' : 'false');
+  }
+
+  function applyConfigToForm(config, baseUrl = '') {
+    if (baseUrl) setValue('customBaseUrl', baseUrl);
+    setValue('deepbridKey', config.deepbridApiKey || '');
+    setValue('externalResultMode', config.externalResultMode || 'direct');
+    setBool('directLinksOnly', config.directLinksOnly !== false);
+    setBool('deepbridUsenetFinderEnabled', config.deepbridUsenetFinderEnabled !== false);
+    setBool('deepbridFinderBridgeEnabled', config.deepbridFinderBridgeEnabled !== false);
+    currentBridgeId = config.deepbridFinderBridgeId || '';
+    currentBridgeSecret = config.deepbridFinderBridgeSecret || '';
+    setValue('deepbridUsenetFinderMaxResults', config.deepbridUsenetFinderMaxResults || 4);
+    setValue('deepbridUsenetFinderMaxProcess', config.deepbridUsenetFinderMaxProcess || 5);
+    setBool('torboxEnabled', config.torboxEnabled === true);
+    setValue('torboxApiKey', config.torboxApiKey || '');
+    setBool('torboxPrecacheUncached', config.torboxPrecacheUncached === true);
+    setValue('torboxTimeout', config.torboxTimeout || 45000);
+    setValue('torboxPollTimeout', config.torboxPollTimeout || 18000);
+    setBool('easynewsEnabled', config.easynewsEnabled !== false);
+    setValue('easynewsUsername', config.easynewsUsername || '');
+    setValue('easynewsPassword', config.easynewsPassword || '');
+    setValue('easynewsMaxResults', config.easynewsMaxResults || 4);
+    setBool('deepbridLibraryEnabled', config.deepbridLibraryEnabled !== false);
+    setBool('deepbridLibraryCatalogsEnabled', config.deepbridLibraryCatalogsEnabled !== false);
+    setValue('externalTorrentMagnets', config.externalTorrentMagnets || '');
+    setValue('stremioAddonUrls', Array.isArray(config.stremioAddons) ? config.stremioAddons.map(addon => addon && addon.url).filter(Boolean).join('\n') : '');
+    setBool('newshostingEnabled', config.newshostingEnabled !== false);
+    setValue('newshostingUsername', config.newshostingUsername || '');
+    setValue('newshostingPassword', config.newshostingPassword || '');
+    setValue('newshostingHost', config.newshostingHost || 'srv.aboutusenet.com');
+    setValue('newshostingIp', config.newshostingIp || '81.171.93.8');
+    setValue('newshostingPort', config.newshostingPort || 5598);
+    setValue('newshostingMaxResults', config.newshostingMaxResults || 12);
+    setValue('newshostingMaxNzbFiles', config.newshostingMaxNzbFiles || 32);
+    setBool('nexusMiatrixEnabled', config.nexusMiatrixEnabled !== false);
+    setValue('nexusMiatrixCookie', config.nexusMiatrixCookie || '');
+    setValue('nexusMiatrixEmail', config.nexusMiatrixEmail || '');
+    setValue('nexusMiatrixPassword', config.nexusMiatrixPassword || '');
+    setValue('nexusMiatrixMaxResults', config.nexusMiatrixMaxResults || 2);
+    setValue('nexusMiatrixSearchTimeout', config.nexusMiatrixSearchTimeout || 8000);
+    setValue('officialTimeout', config.officialTimeout || 0);
+    setValue('resolveTimeout', config.resolveTimeout || 0);
+    setValue('indexerTimeout', config.indexerTimeout || 0);
+    setValue('pregrabDeadlineMs', config.pregrabDeadlineMs || 0);
+    setValue('pregrabMaxReady', config.pregrabMaxReady || 0);
+    setValue('pregrabConcurrency', config.pregrabConcurrency || 0);
+
+    const limits = config.limits || {};
+    setValue('dbLimit2160p', limits["2160p"] ?? 'all');
+    setValue('dbLimit1080p', limits["1080p"] ?? '15');
+    setValue('dbLimit720p', limits["720p"] ?? '15');
+    setValue('dbLimitSD', limits["SD"] ?? '15');
+
+    const indexerContainer = document.getElementById('indexerContainer');
+    indexerContainer.innerHTML = '';
+    indexerCount = 0;
+    const indexers = Array.isArray(config.indexers) ? config.indexers : [];
+    indexers.forEach(indexer => {
+      addIndexer(indexer.name || '', indexer.url || '', indexer.key || '');
+      const item = indexerContainer.lastElementChild;
+      const itemLimits = indexer.limits || {};
+      item.querySelector('.idx-l4k').value = itemLimits["2160p"] ?? 'all';
+      item.querySelector('.idx-l1080').value = itemLimits["1080p"] ?? '15';
+      item.querySelector('.idx-l720').value = itemLimits["720p"] ?? '15';
+      item.querySelector('.idx-lsd').value = itemLimits["SD"] ?? '15';
+    });
+  }
+
+  function saveConfigToBrowser() {
+    try {
+      localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(buildBackupPayload()));
+      setBackupStatus('Configuration saved in this browser.');
+    } catch (error) {
+      alert(error.message || 'Unable to save configuration in this browser.');
+    }
+  }
+
+  function loadConfigFromBrowser(showAlert = false) {
+    try {
+      const raw = localStorage.getItem(CONFIG_STORAGE_KEY);
+      if (!raw) {
+        if (showAlert) alert('No saved Deepbridge configuration was found in this browser.');
+        return false;
+      }
+      const payload = unwrapBackupPayload(JSON.parse(raw));
+      applyConfigToForm(payload.config, payload.baseUrl);
+      setBackupStatus('Saved configuration loaded.');
+      return true;
+    } catch (error) {
+      if (showAlert) alert(error.message || 'Unable to load saved configuration.');
+      return false;
+    }
+  }
+
+  function downloadConfigBackup() {
+    try {
+      const payload = buildBackupPayload();
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'deepbridge-config-backup.json';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(link.href);
+      setBackupStatus('Backup downloaded. Keep it private because it contains secrets.');
+    } catch (error) {
+      alert(error.message || 'Unable to download backup.');
+    }
+  }
+
+  function importConfigBackup(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const payload = unwrapBackupPayload(JSON.parse(String(reader.result || '{}')));
+        applyConfigToForm(payload.config, payload.baseUrl);
+        localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify({
+          version: CONFIG_BACKUP_VERSION,
+          type: 'deepbridge-dashboard-config',
+          containsSecrets: true,
+          importedAt: new Date().toISOString(),
+          baseUrl: payload.baseUrl,
+          config: payload.config
+        }));
+        setBackupStatus('Backup imported and saved in this browser.');
+      } catch (error) {
+        alert(error.message || 'Unable to import backup.');
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  function generate() {
+    let configObj;
+    try {
+      configObj = collectConfigFromForm({ requireDeepbridKey: true, requireCompleteIndexers: true });
+    } catch (error) {
+      alert(error.message);
+      return;
+    }
+
     const configStr = btoa(JSON.stringify(configObj))
       .replace(/\+/g, '-')
       .replace(/\//g, '_')
       .replace(/=+$/, '');
-      
+
     let baseUrl = document.getElementById('customBaseUrl').value.trim();
     if (!baseUrl) {
       baseUrl = window.location.origin;
@@ -905,18 +1200,19 @@
     if (baseUrl.endsWith('/')) {
       baseUrl = baseUrl.slice(0, -1);
     }
-    
+
     let url = baseUrl + '/' + configStr + '/manifest.json';
-    
+
     document.getElementById('manifestUrl').innerText = url;
     const bridgeResult = document.getElementById('browserBridgeResult');
-    if (browserBridgeEnabled) {
+    if (configObj.deepbridFinderBridgeEnabled) {
       document.getElementById('browserBridgeUrl').innerText = baseUrl + '/' + configStr + '/finder-auth';
       bridgeResult.style.display = 'block';
     } else {
       bridgeResult.style.display = 'none';
     }
     document.getElementById('result').style.display = 'block';
+    saveConfigToBrowser();
   }
 
   function copyInstall() {
@@ -930,7 +1226,9 @@
     navigator.clipboard.writeText(document.getElementById('browserBridgeUrl').innerText);
   }
 
-  window.onload = () => {};
+  window.onload = () => {
+    loadConfigFromBrowser(false);
+  };
 </script>
 
 </body>

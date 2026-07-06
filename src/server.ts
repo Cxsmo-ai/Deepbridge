@@ -790,15 +790,30 @@ async function resolveNzbToTorBoxPlayableUrl(payload: ResolvePayload, userConfig
   return client.requestDownloadPermalink(usenetId, playableFile.id);
 }
 
-async function resolvePreparedCandidateToPlayableUrl(client: DeepbridClient, candidate: SourceCandidate, payload: ResolvePayload, addTimeoutMs = 25000, userConfig?: any, requestBaseUrl?: string): Promise<{ url: string; service: "deepbrid" | "torbox" }> {
+function torBoxFastPregrabConfig(userConfig: any, timeoutMs: number): any {
+  if (!userConfig) return userConfig;
+  const cappedTimeout = Math.max(2500, Math.min(timeoutMs + 1500, 9000));
+  const configuredTorboxTimeout = Number(userConfig?.torboxTimeout || process.env.TORBOX_TIMEOUT || 45000) || 45000;
+  const configuredPollTimeout = Number(userConfig?.torboxPollTimeout || process.env.TORBOX_POLL_TIMEOUT || 18000) || 18000;
+  return {
+    ...userConfig,
+    torboxPrecacheUncached: false,
+    torboxTimeout: Math.min(configuredTorboxTimeout, cappedTimeout),
+    torboxPollTimeout: Math.min(configuredPollTimeout, cappedTimeout),
+    torboxPollInterval: Math.min(Number(userConfig?.torboxPollInterval || process.env.TORBOX_POLL_INTERVAL || 1000) || 1000, 1000)
+  };
+}
+
+async function resolvePreparedCandidateToPlayableUrl(client: DeepbridClient, candidate: SourceCandidate, payload: ResolvePayload, addTimeoutMs = 25000, userConfig?: any, requestBaseUrl?: string, fastTorbox = false): Promise<{ url: string; service: "deepbrid" | "torbox" }> {
   const attempts: Array<Promise<{ url: string; service: "deepbrid" | "torbox" }>> = [
     resolvePreparedNzbToPlayableUrl(client, payload, addTimeoutMs, userConfig, requestBaseUrl)
       .then(url => ({ url, service: "deepbrid" as const }))
   ];
 
   if (torBoxEnabled(userConfig) && candidate.origin !== "deepbrid-usenet-finder") {
+    const torboxConfig = fastTorbox ? torBoxFastPregrabConfig(userConfig, addTimeoutMs) : userConfig;
     attempts.push(
-      resolveNzbToTorBoxPlayableUrl(payload, userConfig, requestBaseUrl)
+      resolveNzbToTorBoxPlayableUrl(payload, torboxConfig, requestBaseUrl)
         .then(url => ({ url, service: "torbox" as const }))
     );
   }
@@ -905,9 +920,15 @@ async function pregrabExternalCandidates(client: DeepbridClient, candidates: Sou
   const startedAt = Date.now();
   const directMode = mode === "direct";
   const hasGeneratedNzbCandidates = candidates.some(candidate => candidate.origin === "newshosting-direct" || candidate.origin === "nexus-miatrix");
-  const deadlineMs = directMode ? (hasGeneratedNzbCandidates ? 75000 : 22000) : 22000;
-  const maxAttempts = directMode ? (hasGeneratedNzbCandidates ? 36 : 14) : 48;
-  const maxReady = directMode ? 8 : 24;
+  const deadlineMs = directMode
+    ? Math.max(8000, Math.min(Number(userConfig?.pregrabDeadlineMs || process.env.DEEPBRIDGE_PREGRAB_DEADLINE_MS || (hasGeneratedNzbCandidates ? 30000 : 18000)) || 30000, 45000))
+    : 22000;
+  const maxAttempts = directMode
+    ? Math.max(4, Math.min(Number(userConfig?.pregrabMaxAttempts || process.env.DEEPBRIDGE_PREGRAB_MAX_ATTEMPTS || (hasGeneratedNzbCandidates ? 14 : 8)) || 14, 24))
+    : 48;
+  const maxReady = directMode
+    ? Math.max(1, Math.min(Number(userConfig?.pregrabMaxReady || process.env.DEEPBRIDGE_PREGRAB_MAX_READY || 3) || 3, 8))
+    : 24;
   const sortedCandidates = candidates
     .filter(candidate => candidate.origin !== "deepbrid-official")
     .sort((a, b) => b.score - a.score);
@@ -915,7 +936,9 @@ async function pregrabExternalCandidates(client: DeepbridClient, candidates: Sou
     ? directModeCandidates(sortedCandidates, maxAttempts)
     : sortedCandidates.slice(0, maxAttempts);
   const readyCandidates: SourceCandidate[] = [];
-  const concurrency = directMode ? 3 : 4;
+  const concurrency = directMode
+    ? Math.max(2, Math.min(Number(userConfig?.pregrabConcurrency || process.env.DEEPBRIDGE_PREGRAB_CONCURRENCY || 4) || 4, 6))
+    : 4;
   const stats = {
     mode,
     startedAt: new Date(startedAt).toISOString(),
@@ -961,7 +984,7 @@ async function pregrabExternalCandidates(client: DeepbridClient, candidates: Sou
       try {
         stats.attempted++;
         sourceStats(candidate).attempted++;
-        const resolved = await resolvePreparedCandidateToPlayableUrl(client, candidate, payload, addTimeoutFor(candidate), userConfig, requestBaseUrl);
+        const resolved = await resolvePreparedCandidateToPlayableUrl(client, candidate, payload, addTimeoutFor(candidate), userConfig, requestBaseUrl, directMode);
         const playableUrl = resolved.url;
         if (isArchiveUrl(playableUrl)) {
           stats.skippedArchives++;
