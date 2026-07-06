@@ -139,6 +139,13 @@ function streamWarmBudgetMs(userConfig?: any): number {
   return Math.max(15000, Math.min(configured, 180000));
 }
 
+function sourceGatherBudgetMs(userConfig: any, totalBudgetMs: number, warm = false): number {
+  const configured = Number(userConfig?.sourceGatherTimeoutMs || process.env.DEEPBRIDGE_SOURCE_GATHER_TIMEOUT_MS || 0) || 0;
+  const defaultBudget = warm ? 30000 : 13000;
+  const requested = configured > 0 ? configured : defaultBudget;
+  return Math.max(3500, Math.min(requested, Math.max(3500, totalBudgetMs - 4500)));
+}
+
 function streamCacheKey(media: MediaRequest, token?: string): string {
   const tokenHash = createHash("sha256").update(token || "default").digest("hex").slice(0, 20);
   return `${tokenHash}:${makeMediaKey(media)}`;
@@ -1255,7 +1262,8 @@ async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, 
     const startedAt = Date.now();
     const totalBudgetMs = options.budgetMs || streamBudgetMs(userConfig);
     const deadlineAt = startedAt + totalBudgetMs;
-    const sourceBudgetMs = Math.max(3500, Math.min(Number(userConfig?.sourceGatherTimeoutMs || process.env.DEEPBRIDGE_SOURCE_GATHER_TIMEOUT_MS || 9500) || 9500, totalBudgetMs - 4500));
+    const sourceBudgetMs = sourceGatherBudgetMs(userConfig, totalBudgetMs, options.warm === true);
+    const sourceNames = ["official", "finder", "indexer", "easynews", "newshosting", "nexus-miatrix", "torrent", "upstream"];
     const sourcePromises = [
       getOfficialDeepbridSources(client, media, userConfig),
       getDeepbridUsenetFinderSources(media, userConfig),
@@ -1327,6 +1335,9 @@ async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, 
       sourceBudgetMs,
       elapsedMs: Date.now() - startedAt,
       sourceTimeouts: [officialResult, finderResult, indexerResult, easynewsResult, newshostingResult, nexusResult, torrentResult, upstreamAddonResult].filter(result => result.status === "timeout").length,
+      sourceTimeoutNames: [officialResult, finderResult, indexerResult, easynewsResult, newshostingResult, nexusResult, torrentResult, upstreamAddonResult]
+        .map((result, index) => result.status === "timeout" ? sourceNames[index] : "")
+        .filter(Boolean),
       candidates: candidates.length,
       streams: streams.length
     });

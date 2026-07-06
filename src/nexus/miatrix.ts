@@ -74,6 +74,7 @@ function getConfig(userConfig?: any) {
   const email = String(userConfig?.nexusMiatrixEmail || process.env.NEXUS_MIATRIX_EMAIL || "").trim();
   const password = String(userConfig?.nexusMiatrixPassword || process.env.NEXUS_MIATRIX_PASSWORD || "");
   const enabled = Boolean(userConfig?.nexusMiatrixEnabled !== false && (cookie || (email && password)));
+  const requestedMaxResults = Number(userConfig?.nexusMiatrixMaxResults || process.env.NEXUS_MIATRIX_MAX_RESULTS || 4) || 4;
   return {
     enabled,
     cookie,
@@ -83,7 +84,7 @@ function getConfig(userConfig?: any) {
     searchTimeoutMs: Number(userConfig?.nexusMiatrixSearchTimeout || userConfig?.indexerTimeout || process.env.NEXUS_MIATRIX_SEARCH_TIMEOUT || 8000) || 8000,
     browserTimeoutMs: Number(userConfig?.nexusMiatrixBrowserTimeout || process.env.NEXUS_MIATRIX_BROWSER_TIMEOUT || 32000) || 32000,
     nzbTimeoutMs: Number(userConfig?.nexusMiatrixNzbTimeout || userConfig?.resolveTimeout || process.env.NEXUS_MIATRIX_NZB_TIMEOUT || 25000) || 25000,
-    maxResults: Math.max(0, Math.min(Number(userConfig?.nexusMiatrixMaxResults || process.env.NEXUS_MIATRIX_MAX_RESULTS || 2) || 2, 10))
+    maxResults: requestedMaxResults <= 0 ? 0 : Math.max(4, Math.min(requestedMaxResults, 10))
   };
 }
 
