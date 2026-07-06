@@ -180,6 +180,10 @@ export function dedupeCandidates(candidates: SourceCandidate[]): SourceCandidate
   return [...byKey.values()];
 }
 
+function matchRank(candidate: SourceCandidate): number {
+  return candidate.matchScore && Number.isFinite(candidate.matchScore) ? candidate.matchScore : 0;
+}
+
 export function compareCandidates(a: SourceCandidate, b: SourceCandidate): number {
   const libraryDiff = libraryRank(a) - libraryRank(b);
   if (libraryDiff !== 0) return libraryDiff;
@@ -187,8 +191,8 @@ export function compareCandidates(a: SourceCandidate, b: SourceCandidate): numbe
   if (a.status === "ready" && b.status !== "ready") return -1;
   if (b.status === "ready" && a.status !== "ready") return 1;
 
-  const sizeDiff = sizeRank(b) - sizeRank(a);
-  if (sizeDiff !== 0) return sizeDiff;
+  const matchDiff = matchRank(b) - matchRank(a);
+  if (matchDiff !== 0) return matchDiff;
 
   const sourceDiff = sourcePriority(a) - sourcePriority(b);
   if (sourceDiff !== 0) return sourceDiff;
@@ -199,8 +203,8 @@ export function compareCandidates(a: SourceCandidate, b: SourceCandidate): numbe
   const resDiff = resolutionRank(b.resolution) - resolutionRank(a.resolution);
   if (resDiff !== 0) return resDiff;
 
-  const matchDiff = (b.matchScore || 0) - (a.matchScore || 0);
-  if (matchDiff !== 0) return matchDiff;
+  const sizeDiff = sizeRank(b) - sizeRank(a);
+  if (sizeDiff !== 0) return sizeDiff;
 
   return b.score - a.score;
 }

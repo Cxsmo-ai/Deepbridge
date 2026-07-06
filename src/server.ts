@@ -889,6 +889,16 @@ function sourceKey(candidate: SourceCandidate): string {
   return displayMatch?.[1] || candidate.origin;
 }
 
+function externalMatchThreshold(candidate: SourceCandidate): number {
+  if (candidate.mediaType === "series" && candidate.seasonPack) return 850;
+  return candidate.mediaType === "series" ? 600 : 600;
+}
+
+function isAcceptableExternalCandidate(candidate: SourceCandidate): boolean {
+  if (candidate.matchScore === undefined) return true;
+  return candidate.matchScore >= externalMatchThreshold(candidate);
+}
+
 function isEasynewsCandidate(candidate: SourceCandidate): boolean {
   return sourceKey(candidate).toLowerCase().includes("easynews");
 }
@@ -983,6 +993,7 @@ async function pregrabExternalCandidates(client: DeepbridClient, candidates: Sou
     : 24;
   const sortedCandidates = candidates
     .filter(candidate => candidate.origin !== "deepbrid-official")
+    .filter(isAcceptableExternalCandidate)
     .sort((a, b) => b.score - a.score);
   const externalCandidates = directMode
     ? directModeCandidates(sortedCandidates, maxAttempts)

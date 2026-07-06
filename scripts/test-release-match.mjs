@@ -33,6 +33,15 @@ const movieCases = [
   ["No Country for Old Men", "No.Country.for.Old.Men.2007.1080p.BluRay.x264-GROUP", 2007]
 ];
 
+const negativeSeriesCases = [
+  [
+    "Schitt's Creek",
+    "Luz.The.Light.of.the.Heart.S01.HEBREW.1080p.NF.WEB-DL.DDP5.1.H.264-ILSTREAM",
+    1,
+    10
+  ]
+];
+
 for (const [title, releaseTitle, season, episode, extraMetadata = {}] of seriesCases) {
   const media = { type: "series", imdbId: `tt-test-${title}`, season, episode };
   const metadata = {
@@ -64,8 +73,21 @@ for (const [title, releaseTitle, year] of movieCases) {
   assert.doesNotMatch(match.reason, /\bweak-title\b/, `expected strong title evidence for ${title}`);
 }
 
+for (const [title, releaseTitle, season, episode] of negativeSeriesCases) {
+  const media = { type: "series", imdbId: `tt-test-negative-${title}`, season, episode };
+  const metadata = { title, aliases: [title, `${title} 2015`], year: 2015 };
+  const parsed = parseRelease(releaseTitle);
+  const match = scoreReleaseMatch(releaseTitle, media, parsed, metadata);
+
+  assert.ok(
+    match.score < 600,
+    `expected weak series mismatch for ${title}; got ${match.score} (${match.reason}) from ${releaseTitle}`
+  );
+  assert.match(match.reason, /\bweak-title\b/, `expected weak title evidence for mismatch ${releaseTitle}`);
+}
+
 assert.equal(normalizeComparableTitle("Schitt's Creek"), "schitts creek");
 assert.equal(normalizeComparableTitle("Schitt\u2019s Creek"), "schitts creek");
 assert.equal(normalizeComparableTitle("Law & Order: SVU"), "law and order svu");
 
-console.log(`Release matching regression tests passed (${seriesCases.length} series, ${movieCases.length} movies)`);
+console.log(`Release matching regression tests passed (${seriesCases.length} series, ${movieCases.length} movies, ${negativeSeriesCases.length} negative series)`);
