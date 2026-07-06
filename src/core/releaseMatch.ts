@@ -19,6 +19,8 @@ export function normalizeComparableTitle(value: string): string {
   return value
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
+    .replace(/['\u2019`]/g, "")
+    .replace(/\b(?:[A-Za-z][.*]){2,}[A-Za-z]\b/g, acronym => acronym.replace(/[.*]/g, ""))
     .replace(/&/g, " and ")
     .replace(/\b(the|a|an)\b/gi, " ")
     .replace(/[^\p{L}\p{N}]+/gu, " ")
@@ -28,7 +30,7 @@ export function normalizeComparableTitle(value: string): string {
 }
 
 function tokens(value: string): string[] {
-  return normalizeComparableTitle(value).split(" ").filter(token => token.length > 1);
+  return normalizeComparableTitle(value).split(" ").filter(token => token.length > 1 || /^\d$/.test(token));
 }
 
 function titleSimilarity(left: string, right: string): number {

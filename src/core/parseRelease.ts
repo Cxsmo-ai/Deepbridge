@@ -90,7 +90,11 @@ export function parseRelease(title: string): ParsedRelease {
     const value = parseNumber(match[1]);
     if (!value || (value >= 1900 && value <= 2099)) return false;
     const next = title[match.index! + match[0].length];
-    return !(next === "." && /\d/.test(title[match.index! + match[0].length + 1] || ""));
+    if (next === "." && /\d/.test(title[match.index! + match[0].length + 1] || "")) {
+      const afterDot = title.slice(match.index! + match[0].length + 1);
+      return /^(?:2160p|1080p|720p|480p)\b/i.test(afterDot);
+    }
+    return true;
   });
   const rangeEnd = parseNumber(sxeMatch?.[3]);
   const absoluteEpisode = episode ? undefined : parseNumber(absoluteMatch?.[1]);
