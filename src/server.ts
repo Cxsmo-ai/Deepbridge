@@ -6,6 +6,7 @@ import path from "path";
 import dotenv from "dotenv";
 import { spawn } from "child_process";
 import { nanoid } from "nanoid";
+import { createHash } from "crypto";
 
 import { manifest } from "./stremio/manifest";
 import { DeepbridClient, MediaRequest } from "./deepbrid/apiClient";
@@ -21,6 +22,7 @@ import { getLibraryCatalog, getLibraryDirectStream, getLibraryMeta, isLibraryIte
 import { getLastUpstreamAddonStats, getUpstreamAddonSources } from "./stremio/upstreamAddons";
 import { TorBoxClient, torBoxDataItems, TorBoxUsenetFile, TorBoxUsenetItem } from "./torbox/apiClient";
 import { decodeConfig } from "./core/configDecoder";
+import { makeMediaKey } from "./core/mediaKey";
 import { dedupeCandidates } from "./core/releaseMatch";
 import { parseRelease } from "./core/parseRelease";
 import { SourceCandidate } from "./core/types";
@@ -88,6 +90,8 @@ type ResolvePayload = {
 
 const resolveCache = new Map<string, { url: string; expiresAt: number }>();
 const resolveInflight = new Map<string, Promise<string>>();
+const streamResponseCache = new Map<string, { streams: any[]; expiresAt: number; refreshedAt: number }>();
+const streamWarmInflight = new Map<string, Promise<void>>();
 const newshostingNzbCache = new Map<string, { nzb: string; expiresAt: number }>();
 const nexusNzbCache = new Map<string, { nzb: string; expiresAt: number }>();
 let lastNewshostingNzbStats = {
@@ -125,6 +129,21 @@ function streamBudgetMs(userConfig?: any): number {
   return Math.max(6000, Math.min(configured, 24000));
 }
 
+function streamResponseTtlMs(userConfig?: any): number {
+  const configured = Number(userConfig?.streamCacheTtlMs || process.env.DEEPBRIDGE_STREAM_CACHE_TTL_MS || 10 * 60 * 1000) || 10 * 60 * 1000;
+  return Math.max(30000, Math.min(configured, 60 * 60 * 1000));
+}
+
+function streamWarmBudgetMs(userConfig?: any): number {
+  const configured = Number(userConfig?.streamWarmBudgetMs || process.env.DEEPBRIDGE_STREAM_WARM_BUDGET_MS || 90000) || 90000;
+  return Math.max(15000, Math.min(configured, 180000));
+}
+
+function streamCacheKey(media: MediaRequest, token?: string): string {
+  const tokenHash = createHash("sha256").update(token || "default").digest("hex").slice(0, 20);
+  return `${tokenHash}:${makeMediaKey(media)}`;
+}
+
 async function allSettledWithin<T>(promises: Array<Promise<T>>, timeoutMs: number): Promise<Array<SettledResult<T>>> {
   const results: Array<SettledResult<T> | undefined> = new Array(promises.length);
   await Promise.race([
@@ -147,6 +166,9 @@ const resolveTtlMs = 0;
 
 function cacheHealth() {
   const now = Date.now();
+  for (const [key, value] of streamResponseCache.entries()) {
+    if (value.expiresAt <= now) streamResponseCache.delete(key);
+  }
   for (const [key, value] of newshostingNzbCache.entries()) {
     if (value.expiresAt <= now) newshostingNzbCache.delete(key);
   }
@@ -158,6 +180,11 @@ function cacheHealth() {
       entries: resolveCache.size,
       inflight: resolveInflight.size,
       ttlMs: resolveTtlMs
+    },
+    streamResponses: {
+      entries: streamResponseCache.size,
+      inflight: streamWarmInflight.size,
+      ttlMs: streamResponseTtlMs()
     },
     newshostingNzb: {
       entries: newshostingNzbCache.size,
@@ -1148,7 +1175,35 @@ app.get("/:token/meta/:type/:id.json", async (request, reply) => {
   return result || reply.status(404).send({ meta: null });
 });
 
-async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, token?: string) {
+type StreamRequestOptions = {
+  budgetMs?: number;
+  bypassCacheRead?: boolean;
+  warm?: boolean;
+};
+
+function warmStreamCache(media: MediaRequest, dynamicBaseUrl: string, token: string | undefined, userConfig?: any) {
+  const key = streamCacheKey(media, token);
+  if (streamWarmInflight.has(key)) return;
+  const promise = handleStreamRequest(media, dynamicBaseUrl, token, {
+    budgetMs: streamWarmBudgetMs(userConfig),
+    bypassCacheRead: true,
+    warm: true
+  }).then(result => {
+    app.log.info({
+      event: "stream_cache_warmed",
+      mediaType: media.type,
+      id: media.type === "series" ? `${media.imdbId}:${media.season}:${media.episode}` : media.imdbId,
+      streams: result.streams.length
+    });
+  }).catch(error => {
+    app.log.warn({ event: "stream_cache_warm_failed", error: error instanceof Error ? error.message : String(error) });
+  }).finally(() => {
+    streamWarmInflight.delete(key);
+  });
+  streamWarmInflight.set(key, promise);
+}
+
+async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, token?: string, options: StreamRequestOptions = {}) {
   try {
     let apiKey = "";
     let userConfig: any = null;
@@ -1168,10 +1223,26 @@ async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, 
       return { streams: [] };
     }
     const client = new DeepbridClient(apiKey);
+    const cacheKey = streamCacheKey(media, token);
+    if (!options.bypassCacheRead) {
+      cacheHealth();
+      const cached = streamResponseCache.get(cacheKey);
+      if (cached && cached.expiresAt > Date.now() && cached.streams.length > 0) {
+        warmStreamCache(media, dynamicBaseUrl, token, userConfig);
+        app.log.info({
+          event: "stream_cache_hit",
+          mediaType: media.type,
+          id: media.type === "series" ? `${media.imdbId}:${media.season}:${media.episode}` : media.imdbId,
+          streams: cached.streams.length,
+          ageMs: Date.now() - cached.refreshedAt
+        });
+        return { streams: cached.streams };
+      }
+    }
 
     const publicToken = token || "default_token";
     const startedAt = Date.now();
-    const totalBudgetMs = streamBudgetMs(userConfig);
+    const totalBudgetMs = options.budgetMs || streamBudgetMs(userConfig);
     const deadlineAt = startedAt + totalBudgetMs;
     const sourceBudgetMs = Math.max(3500, Math.min(Number(userConfig?.sourceGatherTimeoutMs || process.env.DEEPBRIDGE_SOURCE_GATHER_TIMEOUT_MS || 9500) || 9500, totalBudgetMs - 4500));
     const sourcePromises = [
@@ -1251,9 +1322,16 @@ async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, 
     
     // Fallback if empty
     if (streams.length === 0) {
+      if (!options.warm) warmStreamCache(media, dynamicBaseUrl, token, userConfig);
       return { streams: [] };
     }
 
+    streamResponseCache.set(cacheKey, {
+      streams,
+      expiresAt: Date.now() + streamResponseTtlMs(userConfig),
+      refreshedAt: Date.now()
+    });
+    if (!options.warm) warmStreamCache(media, dynamicBaseUrl, token, userConfig);
     return { streams };
   } catch (error) {
     app.log.error(error);

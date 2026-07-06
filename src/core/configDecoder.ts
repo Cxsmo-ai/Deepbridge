@@ -61,6 +61,8 @@ export interface UserConfig {
   torboxPollInterval?: number;
   streamTimeoutMs?: number;
   sourceGatherTimeoutMs?: number;
+  streamWarmBudgetMs?: number;
+  streamCacheTtlMs?: number;
   pregrabDeadlineMs?: number;
   pregrabMaxAttempts?: number;
   pregrabMaxReady?: number;
