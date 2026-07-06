@@ -157,7 +157,7 @@ async function allSettledWithin<T>(promises: Array<Promise<T>>, timeoutMs: numbe
     ))),
     new Promise(resolve => setTimeout(resolve, Math.max(1, timeoutMs)))
   ]);
-  return results.map(result => result || { status: "timeout" });
+  return Array.from({ length: promises.length }, (_, index) => results[index] || { status: "timeout" });
 }
 
 // Final Deepbrid/myfast playback URLs can be short-lived or single-use.
