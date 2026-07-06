@@ -1009,7 +1009,9 @@ async function pregrabExternalCandidates(client: DeepbridClient, candidates: Sou
       try {
         stats.attempted++;
         sourceStats(candidate).attempted++;
-        const resolved = await resolvePreparedCandidateToPlayableUrl(client, candidate, payload, addTimeoutFor(candidate), userConfig, requestBaseUrl, directMode);
+        const remainingMs = deadlineMs - (Date.now() - startedAt) - 250;
+        if (remainingMs <= 500) break;
+        const resolved = await resolvePreparedCandidateToPlayableUrl(client, candidate, payload, Math.min(addTimeoutFor(candidate), remainingMs), userConfig, requestBaseUrl, directMode);
         const playableUrl = resolved.url;
         if (isArchiveUrl(playableUrl)) {
           stats.skippedArchives++;
