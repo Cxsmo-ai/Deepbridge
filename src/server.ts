@@ -117,6 +117,30 @@ let lastPregrabStats = {
   concurrency: 0,
   bySource: {} as Record<string, { attempted: number; ready: number; failed: number; skipped: number; errors?: Record<string, number> }>
 };
+
+type SettledResult<T> = PromiseSettledResult<T> | { status: "timeout" };
+
+function streamBudgetMs(userConfig?: any): number {
+  const configured = Number(userConfig?.streamTimeoutMs || process.env.DEEPBRIDGE_STREAM_BUDGET_MS || 21000) || 21000;
+  return Math.max(6000, Math.min(configured, 24000));
+}
+
+async function allSettledWithin<T>(promises: Array<Promise<T>>, timeoutMs: number): Promise<Array<SettledResult<T>>> {
+  const results: Array<SettledResult<T> | undefined> = new Array(promises.length);
+  await Promise.race([
+    Promise.all(promises.map((promise, index) => promise.then(
+      value => {
+        results[index] = { status: "fulfilled", value };
+      },
+      reason => {
+        results[index] = { status: "rejected", reason };
+      }
+    ))),
+    new Promise(resolve => setTimeout(resolve, Math.max(1, timeoutMs)))
+  ]);
+  return results.map(result => result || { status: "timeout" });
+}
+
 // Final Deepbrid/myfast playback URLs can be short-lived or single-use.
 // Keep only in-flight de-duping, not long-lived cached redirects.
 const resolveTtlMs = 0;
@@ -916,13 +940,14 @@ function directModeCandidates(candidates: SourceCandidate[], limit: number): Sou
   return selected;
 }
 
-async function pregrabExternalCandidates(client: DeepbridClient, candidates: SourceCandidate[], mode: "direct" | "prechecked" = "direct", userConfig?: any, requestBaseUrl?: string): Promise<SourceCandidate[]> {
+async function pregrabExternalCandidates(client: DeepbridClient, candidates: SourceCandidate[], mode: "direct" | "prechecked" = "direct", userConfig?: any, requestBaseUrl?: string, budgetMs?: number): Promise<SourceCandidate[]> {
   const startedAt = Date.now();
   const directMode = mode === "direct";
   const hasGeneratedNzbCandidates = candidates.some(candidate => candidate.origin === "newshosting-direct" || candidate.origin === "nexus-miatrix");
-  const deadlineMs = directMode
+  const configuredDeadlineMs = directMode
     ? Math.max(8000, Math.min(Number(userConfig?.pregrabDeadlineMs || process.env.DEEPBRIDGE_PREGRAB_DEADLINE_MS || (hasGeneratedNzbCandidates ? 30000 : 18000)) || 30000, 45000))
     : 22000;
+  const deadlineMs = Math.max(1000, Math.min(configuredDeadlineMs, Number(budgetMs || configuredDeadlineMs) || configuredDeadlineMs));
   const maxAttempts = directMode
     ? Math.max(4, Math.min(Number(userConfig?.pregrabMaxAttempts || process.env.DEEPBRIDGE_PREGRAB_MAX_ATTEMPTS || (hasGeneratedNzbCandidates ? 14 : 8)) || 14, 24))
     : 48;
@@ -1143,7 +1168,11 @@ async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, 
     const client = new DeepbridClient(apiKey);
 
     const publicToken = token || "default_token";
-    const [officialResult, finderResult, indexerResult, easynewsResult, newshostingResult, nexusResult, torrentResult, upstreamAddonResult] = await Promise.allSettled([
+    const startedAt = Date.now();
+    const totalBudgetMs = streamBudgetMs(userConfig);
+    const deadlineAt = startedAt + totalBudgetMs;
+    const sourceBudgetMs = Math.max(3500, Math.min(Number(userConfig?.sourceGatherTimeoutMs || process.env.DEEPBRIDGE_SOURCE_GATHER_TIMEOUT_MS || 9500) || 9500, totalBudgetMs - 4500));
+    const sourcePromises = [
       getOfficialDeepbridSources(client, media, userConfig),
       getDeepbridUsenetFinderSources(media, userConfig),
       getIndexerSources(client, media, userConfig),
@@ -1152,7 +1181,8 @@ async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, 
       getNexusMiatrixSources(media, userConfig, dynamicBaseUrl, publicToken),
       getTorrentSources(client, media, userConfig, dynamicBaseUrl, publicToken),
       getUpstreamAddonSources(media, userConfig, dynamicBaseUrl, publicToken)
-    ]);
+    ];
+    const [officialResult, finderResult, indexerResult, easynewsResult, newshostingResult, nexusResult, torrentResult, upstreamAddonResult] = await allSettledWithin(sourcePromises, sourceBudgetMs);
     const officialCandidates = officialResult.status === "fulfilled" ? officialResult.value : [];
     const finderCandidates = finderResult.status === "fulfilled" ? finderResult.value : [];
     const indexerCandidates = indexerResult.status === "fulfilled" ? indexerResult.value : [];
@@ -1166,7 +1196,8 @@ async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, 
     const pregrabCandidates = directLinksOnly || userConfig?.newshostingPrecheck === true
       ? [...indexerCandidates, ...newshostingCandidates, ...nexusCandidates]
       : indexerCandidates;
-    const readyIndexerCandidates = await pregrabExternalCandidates(client, pregrabCandidates, externalMode, userConfig, dynamicBaseUrl);
+    const remainingBudgetMs = Math.max(1000, deadlineAt - Date.now() - 750);
+    const readyIndexerCandidates = await pregrabExternalCandidates(client, pregrabCandidates, externalMode, userConfig, dynamicBaseUrl, remainingBudgetMs);
     const externalCandidates = directLinksOnly
       ? readyIndexerCandidates
       : externalMode === "direct"
@@ -1204,6 +1235,17 @@ async function handleStreamRequest(media: MediaRequest, dynamicBaseUrl: string, 
     const candidates = candidateGroups.flat()
       .filter(candidate => !directLinksOnly || Boolean(candidate.playableUrl));
     const streams = formatStreams(candidates, dynamicBaseUrl, token);
+    app.log.info({
+      event: "stream_budget",
+      mediaType: media.type,
+      id: media.type === "series" ? `${media.imdbId}:${media.season}:${media.episode}` : media.imdbId,
+      totalBudgetMs,
+      sourceBudgetMs,
+      elapsedMs: Date.now() - startedAt,
+      sourceTimeouts: [officialResult, finderResult, indexerResult, easynewsResult, newshostingResult, nexusResult, torrentResult, upstreamAddonResult].filter(result => result.status === "timeout").length,
+      candidates: candidates.length,
+      streams: streams.length
+    });
     
     // Fallback if empty
     if (streams.length === 0) {

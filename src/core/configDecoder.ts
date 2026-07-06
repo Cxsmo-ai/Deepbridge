@@ -59,6 +59,8 @@ export interface UserConfig {
   torboxTimeout?: number;
   torboxPollTimeout?: number;
   torboxPollInterval?: number;
+  streamTimeoutMs?: number;
+  sourceGatherTimeoutMs?: number;
   pregrabDeadlineMs?: number;
   pregrabMaxAttempts?: number;
   pregrabMaxReady?: number;
